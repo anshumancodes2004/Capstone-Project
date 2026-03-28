@@ -1,0 +1,296 @@
+<!-- student_dashboard.html  -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OEMS - Student Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            background-color: #f4f7f6;
+            color: #333333;
+            min-height: 100vh;
+            padding: 2rem;
+            background-image: radial-gradient(circle at top right, #eef2f3, transparent 40%),
+                              radial-gradient(circle at bottom left, #e0eafc, transparent 40%);
+        }
+
+        .dashboard-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            animation: fadeIn 0.8s ease-in-out;
+        }
+
+        /* Header Section */
+        .header-section {
+            margin-bottom: 2.5rem;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .header-text-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header-title {
+            font-size: 2.5rem;
+            font-weight: 600;
+            color: #2c3e50;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            line-height: 1.2;
+        }
+
+        .header-subtitle {
+            color: #6c757d;
+            font-size: 0.95rem;
+            margin-top: 5px;
+            font-weight: 500;
+        }
+
+        .action-btns-group {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .nav-btn {
+            display: inline-block;
+            color: #555555;
+            text-decoration: none;
+            font-size: 1rem;
+            border: 1px solid #cccccc;
+            padding: 10px 25px;
+            border-radius: 25px;
+            transition: 0.3s;
+            background: white;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        .nav-btn:hover {
+            background: #f0f0f0;
+            color: #111111;
+            border-color: #aaaaaa;
+        }
+
+        .logout-btn {
+            display: inline-block;
+            color: #dc3545;
+            text-decoration: none;
+            font-size: 1rem;
+            border: 1px solid #dc3545;
+            padding: 10px 25px;
+            border-radius: 25px;
+            transition: 0.3s;
+            background: white;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        .logout-btn:hover {
+            background: #dc3545;
+            color: white;
+            box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3);
+        }
+
+        .split-line {
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #007bff, #00c6ff, #007bff, transparent);
+            box-shadow: 0 0 10px rgba(0, 123, 255, 0.4);
+            animation: glowingLine 2s infinite alternate;
+        }
+
+        /* Student Info Card */
+        .info-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            border-radius: 15px;
+            padding: 1.5rem 2rem;
+            margin-bottom: 2.5rem;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            box-shadow: 0 4px 15px rgba(31, 38, 135, 0.05);
+        }
+
+        .info-avatar {
+            font-size: 2.5rem;
+            background: rgba(0, 123, 255, 0.1);
+            color: #007bff;
+            width: 65px;
+            height: 65px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            border: 1px solid rgba(0, 123, 255, 0.2);
+        }
+
+        .info-details h3 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+
+        .info-details .highlight-text { color: #007bff; }
+        
+        .info-details p {
+            color: #6c757d;
+            font-size: 0.95rem;
+            margin-bottom: 5px;
+        }
+
+        .adm-badge {
+            font-family: 'Poppins', sans-serif;
+            background: #e9ecef;
+            padding: 2px 10px;
+            border-radius: 6px;
+            color: #495057;
+            font-weight: 600;
+            font-size: 0.9rem;
+            border: 1px solid #dee2e6;
+            display: inline-block;
+        }
+
+        /* Glassmorphism Table Wrapper */
+        .table-wrapper {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            border-radius: 15px;
+            overflow-x: auto;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+        }
+
+        .table-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .table-title { font-size: 1.1rem; font-weight: 600; color: #2c3e50; }
+        
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { background: rgba(0, 123, 255, 0.05); color: #0056b3; padding: 1.2rem 1rem; font-weight: 600; letter-spacing: 1px; border-bottom: 2px solid #e9ecef; white-space: nowrap; font-size: 0.9rem; }
+        td { padding: 1.2rem 1rem; border-bottom: 1px solid #e9ecef; color: #495057; vertical-align: middle; font-size: 0.95rem; }
+        tr:hover td { background: rgba(0, 123, 255, 0.02); transition: 0.3s; }
+
+        .soft-badge { padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; display: inline-block;}
+        .badge-type { background: #e3f2fd; color: #0056b3; border: 1px solid #b6d4fe; text-transform: uppercase; }
+
+        .start-btn {
+            background: linear-gradient(45deg, #007bff, #00c6ff);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            text-decoration: none;
+            transition: 0.3s;
+            display: inline-block;
+            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.2);
+            white-space: nowrap;
+        }
+
+        .start-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
+            color: white;
+        }
+
+        /* Animations */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes glowingLine { from { opacity: 0.6; box-shadow: 0 0 5px rgba(0, 123, 255, 0.3); } to { opacity: 1; box-shadow: 0 0 12px rgba(0, 198, 255, 0.6); } }
+
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-container">
+        
+        <div class="header-section">
+            <div class="header-content">
+                <div class="header-text-group">
+                    <h1 class="header-title">Student Portal</h1>
+                    <p class="header-subtitle">Your personal examination dashboard</p>
+                </div>
+                <div class="action-btns-group">
+                    <a href="/edit_profile" class="nav-btn">Edit Profile</a>
+                    <a href="/logout" class="logout-btn">Logout →</a>
+                </div>
+            </div>
+            <div class="split-line"></div>
+        </div>
+
+        <div class="info-card">
+            <div class="info-avatar">🎓</div>
+            <div class="info-details">
+                <h3>Welcome back, <span class="highlight-text">{{ session.student_name }}</span></h3>
+                <p>Admission Number: <span class="adm-badge">{{ session.admission_no }}</span></p>
+                <p>Program (branch): <span class="adm-badge">{{ session.program }} ({{session.branch}})</span></p>
+                <p>Semester: <span class="adm-badge">Sem ({{ session.semester }})</span></p>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <div class="table-header">
+                <div class="table-title">📝 Available Exams</div>
+            </div>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Course Name</th>
+                        <th>Type</th>
+                        <th>Total Marks</th>
+                        <th>Schedule</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if exams %}
+                        {% for exam in exams %}
+                        <tr>
+                            <td style="font-weight: 600; color: #2c3e50;">{{ exam.title }}</td>
+                            <td><span class="soft-badge badge-type">{{ exam.exam_type }}</span></td>
+                            <td style="font-weight: 500;">{{ exam.total_marks }} Marks</td>
+                            <td>
+                                <div style="color: #2c3e50; font-weight: 500;">STR: {{ exam.start_time.strftime("%I:%M %p") }}</div>
+                                <div style="color: #6c757d; font-size: 0.85rem;">DUR: {{ exam.duration }} mins</div>
+                            </td>
+                            <td>
+                                <a href="/start_exam/{{ exam.id }}" class="start-btn">Start Exam ▶</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="5" style="text-align: center; padding: 3rem; color: #6c757d;">No Exams Available</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

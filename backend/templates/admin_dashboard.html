@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OEMS - Admin Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            background-color: #f4f7f6;
+            color: #333333;
+            min-height: 100vh;
+            padding: 2rem;
+            background-image: radial-gradient(circle at top right, #eef2f3, transparent 40%),
+                              radial-gradient(circle at bottom left, #e0eafc, transparent 40%);
+        }
+
+        .dashboard-container {
+            max-width: 1300px;
+            margin: 0 auto;
+            animation: fadeIn 0.8s ease-in-out;
+        }
+
+        /* EXACT Matching Header Section */
+        .header-section {
+            margin-bottom: 3rem;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem; /* Exact same distance to split-line */
+        }
+
+        .header-text-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header-title {
+            font-size: 2.5rem;
+            font-weight: 600;
+            color: #2c3e50;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            line-height: 1.2;
+        }
+
+        .header-subtitle {
+            color: #6c757d;
+            font-size: 0.95rem;
+            margin-top: 5px;
+        }
+
+        .logout-btn {
+            display: inline-block;
+            color: #dc3545;
+            text-decoration: none;
+            font-size: 1rem;
+            border: 1px solid #dc3545;
+            padding: 10px 25px;
+            border-radius: 25px;
+            transition: 0.3s;
+            background: white;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        .logout-btn:hover {
+            background: #dc3545;
+            color: white;
+            box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3);
+        }
+
+        .split-line {
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #007bff, #00c6ff, #007bff, transparent);
+            box-shadow: 0 0 10px rgba(0, 123, 255, 0.4);
+            animation: glowingLine 2s infinite alternate;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            border-radius: 15px;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(31, 38, 135, 0.05);
+            transition: 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0, 123, 255, 0.1);
+        }
+
+        .stat-icon { font-size: 2rem; margin-bottom: 10px; }
+        .stat-value { font-size: 2rem; font-weight: 600; color: #2c3e50; margin-bottom: 5px; }
+        .stat-label { color: #6c757d; font-size: 0.9rem; font-weight: 500; }
+
+        /* Quick Actions Grid */
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .action-item {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            border-radius: 15px;
+            padding: 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            text-decoration: none;
+            color: #333;
+            transition: 0.3s;
+            box-shadow: 0 4px 15px rgba(31, 38, 135, 0.05);
+        }
+
+        .action-item:hover {
+            transform: translateY(-3px);
+            border-color: #007bff;
+            box-shadow: 0 8px 25px rgba(0, 123, 255, 0.15);
+        }
+
+        .action-icon {
+            width: 45px;
+            height: 45px;
+            border-radius: 12px;
+            background: rgba(0, 123, 255, 0.1);
+            color: #007bff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            transition: 0.3s;
+        }
+
+        .action-item:hover .action-icon {
+            background: #007bff;
+            color: white;
+        }
+
+        .action-title { font-weight: 600; font-size: 1rem; color: #2c3e50; }
+        .action-desc { color: #6c757d; font-size: 0.8rem; }
+
+        /* AI Tools Section */
+        .ai-section {
+            display: flex;
+            gap: 15px;
+            justify-content: flex-end;
+            margin-bottom: 1.5rem;
+        }
+
+        .ai-action {
+            padding: 8px 20px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            text-decoration: none;
+            transition: 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ai-action.eval { background: rgba(0, 123, 255, 0.1); color: #007bff; border: 1px solid rgba(0, 123, 255, 0.2); }
+        .ai-action.eval:hover { background: #007bff; color: white; }
+        
+        .ai-action.reset { background: rgba(220, 53, 69, 0.1); color: #dc3545; border: 1px solid rgba(220, 53, 69, 0.2); }
+        .ai-action.reset:hover { background: #dc3545; color: white; }
+
+        /* Glassmorphism Table Wrapper */
+        .table-wrapper {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            border-radius: 15px;
+            overflow-x: auto;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+        }
+
+        .table-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .table-title { font-size: 1.1rem; font-weight: 600; color: #2c3e50; }
+        
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { background: rgba(0, 123, 255, 0.05); color: #0056b3; padding: 1rem; font-weight: 600; letter-spacing: 1px; border-bottom: 2px solid #e9ecef; white-space: nowrap; font-size: 0.9rem; }
+        td { padding: 1rem; border-bottom: 1px solid #e9ecef; color: #495057; vertical-align: middle; font-size: 0.9rem; }
+        tr:hover td { background: rgba(0, 123, 255, 0.02); transition: 0.3s; }
+
+        /* Soft Badges & Buttons inside Table */
+        .soft-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; display: inline-block;}
+        .badge-id { background: #f8f9fa; color: #6c757d; border: 1px solid #dee2e6; }
+        .badge-type { background: #e3f2fd; color: #1976d2; }
+        
+        .action-btn { padding: 5px 12px; border-radius: 6px; font-size: 0.8rem; text-decoration: none; transition: 0.2s; font-weight: 500; display: inline-block; margin: 2px; }
+        .btn-add { background: #e8f5e9; color: #2e7d32; } .btn-add:hover { background: #2e7d32; color: white; }
+        .btn-manage { background: #e3f2fd; color: #1565c0; } .btn-manage:hover { background: #1565c0; color: white; }
+        .btn-check { background: #fff3e0; color: #ef6c00; } .btn-check:hover { background: #ef6c00; color: white; }
+        .btn-del { background: #ffebee; color: #c62828; } .btn-del:hover { background: #c62828; color: white; }
+
+        .status-toggle { padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; text-decoration: none; }
+        .status-draft { background: #fff3e0; color: #ef6c00; border: 1px solid #ffe0b2; }
+        .status-pub { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+
+        /* Empty State */
+        .empty-state { text-align: center; padding: 3rem; color: #6c757d; }
+        .empty-icon { font-size: 3rem; margin-bottom: 10px; }
+
+        /* Animations */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes glowingLine { from { opacity: 0.6; box-shadow: 0 0 5px rgba(0, 123, 255, 0.3); } to { opacity: 1; box-shadow: 0 0 12px rgba(0, 198, 255, 0.6); } }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header-content { flex-direction: column; align-items: flex-start; gap: 1rem; }
+            .header-title { font-size: 1.8rem; }
+            .ai-section { justify-content: flex-start; flex-wrap: wrap; }
+            td, th { padding: 0.8rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-container">
+        
+        <div class="header-section">
+            <div class="header-content">
+                <div class="header-text-group">
+                    <h1>Welcome, 
+                        {% if admin_branch == 'ALL' %} Super {% else %} {{ admin_branch }} {% endif %} 
+                        Admin!
+                    </h1>                    
+                    <p class="header-subtitle">Manage your examination system from one place</p>
+                </div>
+                <a href="/logout" class="logout-btn">Logout →</a>
+            </div>
+            <div class="split-line"></div>
+        </div>
+
+        <div class="actions-grid">
+            <a href="/create_exam" class="action-item">
+                <div class="action-icon">📝</div>
+                <div>
+                    <div class="action-title">Create Exam</div>
+                    <div class="action-desc">Add new assessment</div>
+                </div>
+            </a>
+            <a href="/add_student" class="action-item">
+                <div class="action-icon">👤</div>
+                <div>
+                    <div class="action-title">Add Student</div>
+                    <div class="action-desc">Register new student</div>
+                </div>
+            </a>
+            <a href="/student_manager" class="action-item">
+                <div class="action-icon">👥</div>
+                <div>
+                    <div class="action-title">Manage Students</div>
+                    <div class="action-desc">View & edit records</div>
+                </div>
+            </a>
+            <a href="/results" class="action-item">
+                <div class="action-icon">📊</div>
+                <div>
+                    <div class="action-title">Results</div>
+                    <div class="action-desc">View performance</div>
+                </div>
+            </a>
+        </div>
+
+        <div class="ai-section">
+            <a href="/run_ai_check" class="ai-action eval">Run AI Evaluation</a>
+            <a href="/reset_ai_evaluation" class="ai-action reset">Reset AI Evaluation</a>
+        </div>
+
+        <div class="table-wrapper">
+            <div class="table-header">
+                <div class="table-title">Exam Database</div>
+                <div class="soft-badge badge-type">{{ exams|length if exams else '0' }} Records</div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Course Title</th>
+                        <th>Program (branch)</th>
+                        <th>Semester</th>
+                        <th>Type/Marks</th>
+                        <th>Schedule</th>
+                        <th>Questions</th>
+                        <th>Security</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if exams and exams|length > 0 %}
+                        {% for exam in exams %}
+                        <tr>
+                            <td><span class="soft-badge badge-id">#{{ exam.id }}</span></td>
+                            <td style="font-weight: 500; color: #2c3e50;">{{ exam.title }}</td>
+                            
+                            <td style="color: #2c3e50; font-weight: 500;">
+                                {{ exam.program }} ({{ exam.branch }})
+                            </td>
+
+                            <td style="color: #2c3e50; font-weight: 500;">
+                                Sem ({{ exam.semester }})
+                            </td>
+                            
+                            <td>
+                                <span class="soft-badge badge-type">{{ exam.exam_type }}</span><br>
+                                <small style="color: #6c757d;">{{ exam.total_marks }} Marks</small>
+                            </td>
+
+                            <td>
+                                <div>STR: {{ exam.start_time.strftime("%I:%M %p") if exam.start_time else '--:--' }}</div>
+                                <small style="color: #6c757d;">DUR: {{ exam.duration }} min</small>
+                            </td>
+
+                            <td>
+                                <a href="/add_question/{{ exam.id }}" class="action-btn btn-add">Add Ques</a><br>
+                                <a href="/questions/{{ exam.id }}" class="action-btn btn-manage">Manage</a>
+                            </td>
+
+                            <td>
+                                {% if exam.exam_type == 'theory' %}
+                                    <a href="/plagiarism/{{ exam.id }}" class="action-btn btn-check">Check</a>
+                                {% else %}
+                                    <span class="soft-badge" style="background: #e9ecef; color: #6c757d; border: 1px solid #dee2e6;">Not needed</span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {% if exam.status == "draft" %}
+                                    <a href="/publish_exam/{{ exam.id }}" class="status-toggle status-draft">Draft</a>
+                                {% else %}
+                                    <a href="/unpublish_exam/{{ exam.id }}" class="status-toggle status-pub">Publish</a>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                <a href="/delete_exam/{{ exam.id }}" class="action-btn btn-del" onclick="return confirm('Are you sure you want to delete this exam?')">Remove</a>
+                            </td>
+
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="9">
+                                <div class="empty-state">
+                                    <!-- <div class="empty-icon">📭</div> -->
+                                    <div style="font-size: 1.1rem; color: #2c3e50; font-weight: 500;">No exams found</div>
+                                    <p style="margin-top: 5px; margin-bottom: 15px;">You haven't created any exams yet.</p>
+                                    <a href="/create_exam" class="action-btn btn-manage" style="padding: 10px 20px; font-size: 1rem;">Create First Exam</a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+</body>
+</html>

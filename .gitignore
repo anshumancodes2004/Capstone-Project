@@ -1,0 +1,18 @@
+# Python / Flask
+venv/
+__pycache__/
+*.pyc
+instance/
+.env
+
+# Node.js / Electron (Secure Browser)
+secure-browser/node_modules/
+secure-browser/dist/
+secure-browser/out/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# AI Models (yolov8s.pt file 20MB+ ki hoti hai, isko push karna zaroori nahi, par agar karni hai toh is line ko hata dena)
+*.pt

@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OEMS - Edit Question</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            background-color: #f4f7f6;
+            color: #333333;
+            min-height: 100vh;
+            padding: 2rem;
+            background-image: radial-gradient(circle at top right, #eef2f3, transparent 40%),
+                              radial-gradient(circle at bottom left, #e0eafc, transparent 40%);
+        }
+
+        .dashboard-container {
+            max-width: 900px;
+            margin: 0 auto;
+            animation: fadeIn 0.8s ease-in-out;
+        }
+
+        .header-section {
+            margin-bottom: 3rem;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .header-text-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header-title {
+            font-size: 2.5rem;
+            font-weight: 600;
+            color: #2c3e50;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            line-height: 1.2;
+        }
+
+        .header-subtitle {
+            color: #6c757d;
+            font-size: 0.95rem;
+            margin-top: 5px;
+            font-weight: 500;
+        }
+
+        .action-btns-group {
+            display: flex;
+            gap: 15px;
+        }
+
+        .nav-btn {
+            display: inline-block;
+            color: #555555;
+            text-decoration: none;
+            font-size: 1rem;
+            border: 1px solid #cccccc;
+            padding: 10px 25px;
+            border-radius: 25px;
+            transition: 0.3s;
+            background: white;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        .nav-btn:hover {
+            background: #f0f0f0;
+            color: #111111;
+            border-color: #aaaaaa;
+        }
+
+        .split-line {
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #007bff, #00c6ff, #007bff, transparent);
+            box-shadow: 0 0 10px rgba(0, 123, 255, 0.4);
+            animation: glowingLine 2s infinite alternate;
+        }
+
+        .form-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            border-radius: 15px;
+            padding: 2.5rem;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+        }
+
+        .form-card-header {
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 1rem;
+        }
+
+        .form-icon {
+            width: 45px;
+            height: 45px;
+            background: rgba(255, 193, 7, 0.15);
+            color: #ff9800;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .form-card-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-group.full-width {
+            grid-column: span 2;
+        }
+
+        .option-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .form-label {
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .form-label span {
+            color: #dc3545;
+            margin-left: 3px;
+        }
+
+        .correct-check-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8rem;
+            color: #ff9800; 
+            font-weight: 600;
+            cursor: pointer;
+            background: rgba(255, 193, 7, 0.1);
+            padding: 4px 12px;
+            border-radius: 15px;
+            transition: 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .correct-check-label:hover {
+            background: rgba(255, 193, 7, 0.2);
+        }
+
+        input[type="checkbox"]:checked + span {
+            color: #fff;
+        }
+        
+        .correct-check-label:has(input[type="checkbox"]:checked) {
+            background: #28a745; 
+            color: white;
+            border-color: #218838;
+        }
+
+        .correct-check-label input[type="checkbox"] {
+            cursor: pointer;
+            accent-color: #fff;
+            margin: 0;
+            width: 14px;
+            height: 14px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px 18px;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 1rem;
+            color: #333;
+            transition: 0.3s;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #ff9800; 
+            background: white;
+            box-shadow: 0 0 10px rgba(255, 193, 7, 0.1);
+        }
+
+        .form-control::placeholder {
+            color: #adb5bd;
+            font-size: 0.95rem;
+        }
+
+        .form-hint {
+            font-size: 0.8rem;
+            color: #6c757d;
+            margin-top: -4px;
+        }
+
+        .info-card {
+            background: #fff8e1;
+            border-left: 4px solid #ffc107;
+            border-radius: 10px;
+            padding: 1.2rem 1.5rem;
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .info-icon-box { font-size: 1.2rem; color: #ffb300; }
+        .info-text { color: #5d4037; font-size: 0.9rem; line-height: 1.5; }
+
+        .form-actions {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .btn-submit {
+            background: linear-gradient(45deg, #007bff, #00c6ff);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.3s;
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.2);
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
+        }
+
+        .btn-cancel {
+            background: white;
+            color: #6c757d;
+            border: 1px solid #ced4da;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 500;
+            text-decoration: none;
+            transition: 0.3s;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .btn-cancel:hover {
+            background: #f8f9fa;
+            color: #dc3545;
+            border-color: #dc3545;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes glowingLine { from { opacity: 0.6; box-shadow: 0 0 5px rgba(0, 123, 255, 0.3); } to { opacity: 1; box-shadow: 0 0 12px rgba(0, 198, 255, 0.6); } }
+
+        @media (max-width: 768px) {
+            .header-content { flex-direction: column; align-items: flex-start; gap: 1.5rem; }
+            .action-btns-group { width: 100%; display: flex; justify-content: space-between; }
+            .header-title { font-size: 1.8rem; }
+            .form-grid { grid-template-columns: 1fr; }
+            .form-group.full-width { grid-column: span 1; }
+            .form-card { padding: 1.5rem; }
+            .form-actions { flex-direction: column; }
+            .btn-submit, .btn-cancel { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="backendData" style="display: none;" data-correct="{{ question.correct_answer or '' }}"></div>
+
+    <div class="dashboard-container">
+        
+        <div class="header-section">
+            <div class="header-content">
+                <div class="header-text-group">
+                    <h1 class="header-title">Edit Question</h1>
+                    <p class="header-subtitle">Update question details and options</p>
+                </div>
+                <div class="action-btns-group">
+                    <a href="javascript:history.back()" class="nav-btn">← Back</a>
+                    <a href="/admin" class="nav-btn">Dashboard</a>
+                </div>
+            </div>
+            <div class="split-line"></div>
+        </div>
+
+        <div class="form-card">
+            <div class="form-card-header">
+                <div class="form-icon">✏️</div>
+                <div class="form-card-title">Modify Question</div>
+            </div>
+
+            <form method="POST" id="questionForm">
+                <div class="form-grid">
+                    
+                    <div class="form-group full-width">
+                        <label class="form-label">Question Text <span>*</span></label>
+                        <textarea name="question_text" class="form-control" rows="4" required>{{ question.question_text }}</textarea>
+                    </div>
+
+                    {% if question.optionA or question.optionB or question.optionC or question.optionD %}
+                    
+                    <div class="form-group">
+                        <div class="option-header">
+                            <label class="form-label">Option A</label>
+                            <label class="correct-check-label">
+                                <input type="checkbox" name="correct_answer" value="optionA"> <span>Correct</span>
+                            </label>
+                        </div>
+                        <input type="text" name="optionA" class="form-control" value="{{ question.optionA or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <div class="option-header">
+                            <label class="form-label">Option B</label>
+                            <label class="correct-check-label">
+                                <input type="checkbox" name="correct_answer" value="optionB"> <span>Correct</span>
+                            </label>
+                        </div>
+                        <input type="text" name="optionB" class="form-control" value="{{ question.optionB or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <div class="option-header">
+                            <label class="form-label">Option C</label>
+                            <label class="correct-check-label">
+                                <input type="checkbox" name="correct_answer" value="optionC"> <span>Correct</span>
+                            </label>
+                        </div>
+                        <input type="text" name="optionC" class="form-control" value="{{ question.optionC or '' }}">
+                    </div>
+                    
+                    <div class="form-group">
+                        <div class="option-header">
+                            <label class="form-label">Option D</label>
+                            <label class="correct-check-label">
+                                <input type="checkbox" name="correct_answer" value="optionD"> <span>Correct</span>
+                            </label>
+                        </div>
+                        <input type="text" name="optionD" class="form-control" value="{{ question.optionD or '' }}">
+                    </div>
+
+                    {% else %}
+                    <div class="form-group full-width">
+                        <label class="form-label">Correct Answer Outline (Optional)</label>
+                        <input type="text" name="correct_answer" class="form-control" value="{{ question.correct_answer or '' }}">
+                        <div class="form-hint">Reference text for theory evaluation.</div>
+                    </div>
+                    {% endif %}
+
+                    <div class="form-group full-width">
+                        <label class="form-label">Marks <span>*</span></label>
+                        <input type="number" name="marks" class="form-control" value="{{ question.marks }}" min="1" required>
+                    </div>
+
+                </div>
+
+                <div class="info-card">
+                    <div class="info-icon-box">💡</div>
+                    <div class="info-text">
+                        Modifying this question will immediately update it in the database. <strong>MCQ detected:</strong> If only one answer was saved, picking a new one will uncheck the old one.
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn-submit">Save Changes</button>
+                    <button type="button" class="btn-cancel" onclick="history.back()">Cancel</button>
+                </div>
+            </form>
+        </div>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const backendData = document.getElementById('backendData').getAttribute('data-correct');
+            const checkboxes = document.querySelectorAll('input[name="correct_answer"]');
+            
+            // 1. Load data and auto-tick checkboxes
+            if (backendData) {
+                const savedAnswers = backendData.split(',').map(a => a.trim()).filter(a => a !== "");
+                
+                checkboxes.forEach(function(box) {
+                    if (savedAnswers.includes(box.value)) {
+                        box.checked = true;
+                    }
+                });
+
+                // 2. MCQ vs MSQ Logic
+                // Agar saved data mein sirf 1 answer hai, toh ise MCQ (Single Select) ki tarah force karein
+                if (savedAnswers.length <= 1) {
+                    checkboxes.forEach(box => {
+                        box.addEventListener('change', function() {
+                            if (this.checked) {
+                                // Baki sabko uncheck kar do (Radio behavior)
+                                checkboxes.forEach(other => {
+                                    if (other !== this) other.checked = false;
+                                });
+                            }
+                        });
+                    });
+                }
+            }
+
+            // 3. Validation before submit
+            const form = document.getElementById('questionForm');
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    const selectedBoxes = document.querySelectorAll('input[name="correct_answer"]:checked');
+                    
+                    if (selectedBoxes.length === 0) {
+                        e.preventDefault();
+                        alert("Please select at least one Correct Answer!");
+                    }
+                });
+            }
+        });
+    </script>
+
+</body>
+</html>

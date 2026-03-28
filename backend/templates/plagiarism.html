@@ -1,0 +1,53 @@
+<h2>AI Plagiarism Detection</h2>
+
+<h3>Similarity Report</h3>
+
+<table border="1" cellpadding="10">
+
+<tr>
+<th>Student 1</th>
+<th>Student 2</th>
+<th>Similarity</th>
+<th>Status</th>
+</tr>
+
+{% for s in similarity_results %}
+
+<tr>
+
+<td>{{ s.student1 }}</td>
+<td>{{ s.student2 }}</td>
+<td>{{ s.similarity }}%</td>
+
+<td>
+{% if s.similarity > 80 %}
+<span style="color:red;">⚠ Suspicious</span>
+{% else %}
+OK
+{% endif %}
+</td>
+
+</tr>
+
+{% endfor %}
+
+</table>
+
+
+{% if cheaters %}
+
+<h3>⚠ Suspicious Students</h3>
+
+<ul>
+
+{% for c in cheaters %}
+<li style="color:red">{{ c }}</li>
+{% endfor %}
+
+</ul>
+
+{% endif %}
+
+<br>
+
+<a href="/admin">Back to Admin</a>

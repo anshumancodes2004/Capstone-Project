@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OEMS - Security Settings</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+        body { background-color: #f0fdf4; color: #1f2937; min-height: 100vh; padding: 2rem; background-image: radial-gradient(circle at top right, #e0f2fe, transparent 50%), radial-gradient(circle at bottom left, #ede9fe, transparent 50%); }
+        
+        .top-nav { max-width: 900px; margin: 0 auto 2rem auto; display: flex; justify-content: space-between; align-items: center; }
+        .page-title { font-size: 2.2rem; font-weight: 700; color: #111827; letter-spacing: -0.5px; }
+        .back-btn { background: white; color: #4b5563; padding: 10px 24px; border-radius: 30px; text-decoration: none; font-weight: 600; font-size: 0.95rem; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: 0.3s; }
+        .back-btn:hover { background: #111827; color: white; transform: translateY(-2px); box-shadow: 0 10px 15px rgba(0,0,0,0.1); }
+
+        .dashboard-grid { max-width: 900px; margin: 0 auto; display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; animation: slideUp 0.6s ease-out forwards; }
+
+        .profile-summary { grid-column: span 2; background: white; border-radius: 24px; padding: 2.5rem; display: flex; align-items: center; gap: 2rem; box-shadow: 0 10px 30px rgba(0,0,0,0.03); border: 1px solid rgba(255,255,255,0.5); }
+        .avatar-box { width: 100px; height: 100px; background: linear-gradient(135deg, #3b82f6, #8b5cf6); border-radius: 24px; display: flex; align-items: center; justify-content: center; font-size: 3rem; color: white; box-shadow: 0 10px 20px rgba(139, 92, 246, 0.3); transform: rotate(-5deg); transition: 0.3s; }
+        .profile-summary:hover .avatar-box { transform: rotate(0deg) scale(1.05); }
+        .info-group { flex: 1; }
+        .info-name { font-size: 1.8rem; font-weight: 700; color: #111827; margin-bottom: 5px; }
+        .info-badges { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+        .badge { background: #f3f4f6; color: #4b5563; padding: 6px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+        .badge.highlight { background: #eff6ff; color: #2563eb; }
+
+        .action-card { background: white; border-radius: 24px; padding: 2.5rem; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 10px 30px rgba(0,0,0,0.03); border: 1px solid rgba(255,255,255,0.5); transition: 0.4s; position: relative; overflow: hidden; cursor: pointer; }
+        .action-card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), rgba(139, 92, 246, 0.05)); opacity: 0; transition: 0.4s; z-index: 0; }
+        .action-card:hover { transform: translateY(-5px); box-shadow: 0 20px 40px rgba(0,0,0,0.08); }
+        .action-card:hover::before { opacity: 1; }
+        .card-content { z-index: 1; }
+        .card-icon { font-size: 2.5rem; margin-bottom: 1rem; display: inline-block; background: #f8fafc; padding: 15px; border-radius: 20px; }
+        .card-title { font-size: 1.4rem; font-weight: 700; color: #111827; margin-bottom: 8px; }
+        .card-desc { color: #6b7280; font-size: 0.95rem; margin-bottom: 2rem; line-height: 1.5; }
+        .card-value { font-family: monospace; font-size: 1.1rem; color: #374151; background: #f3f4f6; padding: 10px 15px; border-radius: 12px; display: inline-block; margin-bottom: 1.5rem; }
+        .card-btn { background: #111827; color: white; border: none; padding: 14px 24px; border-radius: 16px; font-size: 1rem; font-weight: 600; width: 100%; display: flex; justify-content: space-between; align-items: center; transition: 0.3s; }
+        .action-card:hover .card-btn { background: #3b82f6; padding-right: 20px; }
+
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(17, 24, 39, 0.4); backdrop-filter: blur(8px); z-index: 1000; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.3s ease; }
+        .modal-overlay.active { display: flex; opacity: 1; }
+        .modal-box { background: white; padding: 3rem 2.5rem; border-radius: 30px; width: 90%; max-width: 420px; box-shadow: 0 25px 50px rgba(0,0,0,0.2); transform: scale(0.95); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); position: relative; }
+        .modal-overlay.active .modal-box { transform: scale(1); }
+        .close-btn { position: absolute; top: 20px; right: 20px; background: #f3f4f6; border: none; width: 35px; height: 35px; border-radius: 50%; font-size: 1.2rem; color: #6b7280; cursor: pointer; transition: 0.2s; }
+        .close-btn:hover { background: #fee2e2; color: #ef4444; }
+        
+        .modal-header { text-align: center; margin-bottom: 2rem; }
+        .modal-icon-top { font-size: 3rem; margin-bottom: 10px; display: inline-block; }
+        .modal-title { font-size: 1.5rem; font-weight: 700; color: #111827; }
+        .modal-subtitle { color: #6b7280; font-size: 0.9rem; margin-top: 5px; }
+
+        .modal-input-group { margin-bottom: 1.5rem; text-align: left; position: relative; }
+        .modal-label { display: block; font-size: 0.9rem; font-weight: 600; color: #374151; margin-bottom: 8px; }
+        .modal-input { width: 100%; padding: 15px; border: 2px solid #e5e7eb; border-radius: 14px; font-size: 1.05rem; color: #111827; transition: 0.3s; background: #f9fafb; font-family: 'Poppins', sans-serif; }
+        .modal-input:focus { outline: none; border-color: #3b82f6; background: white; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1); }
+        .otp-style { text-align: center; letter-spacing: 12px; font-size: 1.8rem; font-weight: 700; padding: 12px; }
+
+        .match-indicator { display: none; font-size: 0.85rem; font-weight: 600; margin-top: 8px; transition: 0.3s; }
+        .match-indicator.success { color: #10b981; }
+        .match-indicator.error { color: #ef4444; }
+
+        .modal-action-btn { background: #3b82f6; color: white; border: none; padding: 16px; border-radius: 14px; font-size: 1.05rem; font-weight: 600; width: 100%; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); }
+        .modal-action-btn:hover { background: #2563eb; transform: translateY(-2px); box-shadow: 0 6px 15px rgba(59, 130, 246, 0.3); }
+        .modal-action-btn:disabled { background: #9ca3af; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        .step-2 { display: none; }
+
+        .resend-box { text-align: center; margin-top: 1rem; font-size: 0.9rem; font-weight: 500; color: #6b7280; }
+        .resend-btn { background: none; border: none; color: #3b82f6; font-weight: 600; cursor: pointer; font-size: 0.9rem; display: none; padding: 5px; }
+        .resend-btn:hover { text-decoration: underline; }
+
+        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+
+        @media (max-width: 768px) {
+            .dashboard-grid { grid-template-columns: 1fr; }
+            .profile-summary { grid-column: span 1; flex-direction: column; text-align: center; }
+            .info-badges { justify-content: center; }
+            .action-card { padding: 2rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="top-nav">
+        <h1 class="page-title">Security Center</h1>
+        <a href="/student" class="back-btn">← Exit to Dashboard</a>
+    </div>
+
+    <div class="dashboard-grid">
+        <div class="profile-summary">
+            <div class="avatar-box">🎓</div>
+            <div class="info-group">
+                <h2 class="info-name">{{ user.name }}</h2>
+                <div class="info-badges">
+                    <span class="badge highlight">Student ID: {{ user.admission_no }}</span>
+                    <span class="badge">Program(branch): {{ user.program }}({{ user.branch }})</span>
+                    <span class="badge">Semester: Sem({{ user.semester }})</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="action-card" onclick="openModal('email')">
+            <div class="card-content">
+                <div class="card-icon">✉️</div>
+                <h3 class="card-title">Email Address</h3>
+                <p class="card-desc">Your email is used for receiving OTPs, notifications, and exam alerts.</p>
+                <div class="card-value">{{ user.email }}</div>
+            </div>
+            <button class="card-btn">Change Email <span>→</span></button>
+        </div>
+
+        <div class="action-card" onclick="openModal('password')">
+            <div class="card-content">
+                <div class="card-icon">🔑</div>
+                <h3 class="card-title">Password Vault</h3>
+                <p class="card-desc">Keep your account secure. Update your password regularly.</p>
+                <div class="card-value">••••••••</div>
+            </div>
+            <button class="card-btn">Reset Password <span>→</span></button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="mainModal">
+        <div class="modal-box">
+            <button class="close-btn" onclick="closeModal()">×</button>
+            
+            <div class="modal-header">
+                <div class="modal-icon-top" id="modalIcon">✉️</div>
+                <h3 class="modal-title" id="modalTitle">Update Email</h3>
+                <p class="modal-subtitle" id="modalSubtitle">Enter your new email address below.</p>
+            </div>
+
+            <div id="step1">
+                <div class="modal-input-group">
+                    <label class="modal-label" id="inputLabel">New Email Address</label>
+                    <input type="email" id="primaryInput" class="modal-input" placeholder="e.g. student@college.edu" autocomplete="off">
+                </div>
+                
+                <div class="modal-input-group" id="confirmInputGroup" style="display: none;">
+                    <label class="modal-label">Confirm New Password</label>
+                    <input type="password" id="confirmInput" class="modal-input" placeholder="Re-enter your new password" autocomplete="off">
+                    <div id="matchIndicator" class="match-indicator"></div>
+                </div>
+
+                <button class="modal-action-btn" id="sendOtpBtn" onclick="sendOtpHandler()">Send Secure OTP</button>
+            </div>
+
+            <div id="step2" class="step-2">
+                <div class="modal-input-group">
+                    <label class="modal-label">Enter 6-Digit OTP</label>
+                    <input type="text" id="otpInput" class="modal-input otp-style" placeholder="------" maxlength="6" autocomplete="one-time-code">
+                </div>
+                <button class="modal-action-btn" id="verifyOtpBtn" onclick="verifyOtpHandler()">Verify & Save</button>
+                
+                <div class="resend-box">
+                    <span id="resendTimerText">Resend available in <span id="timerCount">30</span>s</span>
+                    <button class="resend-btn" id="resendBtn" onclick="sendOtpHandler(true)">Resend OTP</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <form id="hiddenForm" method="POST" style="display: none;">
+        <input type="hidden" name="email" id="hiddenEmail" value="{{ user.email }}">
+        <input type="hidden" name="password" id="hiddenPassword" value="">
+    </form>
+
+    <script>
+        const originalEmail = "{{ user.email }}";
+        const studentName = "{{ user.name }}"; // BACKEND KO NAME BHEJNE KE LIYE ADD KIYA HAI
+        let currentMode = ''; 
+        let pendingValue = ''; 
+        let timerInterval;
+
+        const modalOverlay = document.getElementById('mainModal');
+        const modalIcon = document.getElementById('modalIcon');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalSubtitle = document.getElementById('modalSubtitle');
+        
+        const inputLabel = document.getElementById('inputLabel');
+        const primaryInput = document.getElementById('primaryInput');
+        const confirmInputGroup = document.getElementById('confirmInputGroup');
+        const confirmInput = document.getElementById('confirmInput');
+        const matchIndicator = document.getElementById('matchIndicator');
+        
+        const step1 = document.getElementById('step1');
+        const step2 = document.getElementById('step2');
+        const sendOtpBtn = document.getElementById('sendOtpBtn');
+        
+        const otpInput = document.getElementById('otpInput');
+        const verifyOtpBtn = document.getElementById('verifyOtpBtn');
+        const resendTimerText = document.getElementById('resendTimerText');
+        const timerCount = document.getElementById('timerCount');
+        const resendBtn = document.getElementById('resendBtn');
+
+        const hiddenForm = document.getElementById('hiddenForm');
+        const hiddenEmail = document.getElementById('hiddenEmail');
+        const hiddenPassword = document.getElementById('hiddenPassword');
+
+        // ENTER KEY NAVIGATION LOGIC
+        primaryInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (currentMode === 'password') confirmInput.focus();
+                else sendOtpBtn.click();
+            }
+        });
+
+        confirmInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); sendOtpBtn.click(); }
+        });
+
+        otpInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') { e.preventDefault(); verifyOtpBtn.click(); }
+        });
+
+        function checkPasswordMatch() {
+            if (currentMode !== 'password') return;
+            const p1 = primaryInput.value;
+            const p2 = confirmInput.value;
+            if (p2 === '') { matchIndicator.style.display = 'none'; return; }
+            matchIndicator.style.display = 'block';
+            if (p1 === p2) {
+                matchIndicator.innerHTML = '✅ Passwords match perfectly!';
+                matchIndicator.className = 'match-indicator success';
+                confirmInput.style.borderColor = '#10b981';
+            } else {
+                matchIndicator.innerHTML = '❌ Passwords do not match.';
+                matchIndicator.className = 'match-indicator error';
+                confirmInput.style.borderColor = '#ef4444';
+            }
+        }
+
+        primaryInput.addEventListener('input', checkPasswordMatch);
+        confirmInput.addEventListener('input', checkPasswordMatch);
+
+        function openModal(mode) {
+            currentMode = mode;
+            pendingValue = '';
+            primaryInput.value = '';
+            confirmInput.value = '';
+            otpInput.value = '';
+            clearInterval(timerInterval); 
+            
+            matchIndicator.style.display = 'none';
+            confirmInput.style.borderColor = '#e5e7eb';
+            
+            step1.style.display = 'block';
+            step2.style.display = 'none';
+
+            if (mode === 'email') {
+                modalIcon.innerText = '✉️';
+                modalTitle.innerText = 'Update Email';
+                modalSubtitle.innerText = 'We will send a verification code to your new email.';
+                inputLabel.innerText = 'New Email Address';
+                primaryInput.type = 'email';
+                primaryInput.placeholder = 'student@domain.com';
+                confirmInputGroup.style.display = 'none';
+            } else {
+                modalIcon.innerText = '🔑';
+                modalTitle.innerText = 'Reset Password';
+                modalSubtitle.innerText = `We will send a code to your current email. (${originalEmail})`;
+                inputLabel.innerText = 'Create New Password';
+                primaryInput.type = 'password';
+                primaryInput.placeholder = 'Enter your new password';
+                confirmInputGroup.style.display = 'block';
+            }
+            modalOverlay.style.display = 'flex';
+            setTimeout(() => modalOverlay.classList.add('active'), 10);
+            primaryInput.focus();
+        }
+
+        function closeModal() {
+            modalOverlay.classList.remove('active');
+            clearInterval(timerInterval);
+            setTimeout(() => modalOverlay.style.display = 'none', 300); 
+        }
+
+        window.onclick = function(event) {
+            if (event.target == modalOverlay) closeModal();
+        }
+
+        function startTimer() {
+            resendBtn.style.display = 'none';
+            resendTimerText.style.display = 'inline';
+            let timeLeft = 30;
+            timerCount.innerText = timeLeft;
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                timerCount.innerText = timeLeft;
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    resendTimerText.style.display = 'none';
+                    resendBtn.style.display = 'inline-block';
+                }
+            }, 1000);
+        }
+
+        // UPDATED: Async function with safe UI transition
+        async function sendOtpHandler(isResend = false) {
+            if (!isResend) {
+                pendingValue = primaryInput.value.trim();
+                const confirmValue = confirmInput.value;
+                if (pendingValue === '') { alert("Please fill the required field."); primaryInput.focus(); return; }
+                if (currentMode === 'password') {
+                    if (pendingValue.length < 6) { alert("Password must be at least 6 characters long."); primaryInput.focus(); return; }
+                    if (pendingValue !== confirmValue) { alert("Passwords do not match!"); confirmInput.focus(); return; }
+                }
+                sendOtpBtn.innerText = "Sending...";
+                sendOtpBtn.disabled = true;
+            } else {
+                resendBtn.innerText = "Sending...";
+                resendBtn.disabled = true;
+            }
+
+            const targetEmail = (currentMode === 'email') ? pendingValue : originalEmail;
+
+            try {
+                // Pehle backend ko request bhejo (NAME bhi bhej rahe hain)
+                const response = await fetch('/send_otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        email: targetEmail, 
+                        mode: currentMode,
+                        name: studentName // Name appended here
+                    })
+                });
+                
+                const data = await response.json();
+
+                // Backend se response aane ke baad 0.5s ka delay
+                setTimeout(() => {
+                    if (data.success) {
+                        if (!isResend) {
+                            step1.style.display = 'none';
+                            step2.style.display = 'block';
+                            modalIcon.innerText = '🛡️';
+                            modalTitle.innerText = 'Verify Identity';
+                            modalSubtitle.innerText = `Enter the 6-digit code sent to ${targetEmail}`;
+                        }
+                        startTimer(); 
+                        otpInput.value = '';
+                        otpInput.focus();
+                    } else {
+                        // Agar duplicate email hui, toh yahin rok dega aur alert aayega
+                        alert(data.message);
+                    }
+                    
+                    // Button states reset
+                    if (!isResend) {
+                        sendOtpBtn.innerText = "Send Secure OTP";
+                        sendOtpBtn.disabled = false;
+                    } else {
+                        resendBtn.innerText = "Resend OTP";
+                        resendBtn.disabled = false;
+                    }
+                }, 500); 
+                
+            } catch (error) {
+                setTimeout(() => {
+                    alert("Error connecting to server. Please try again.");
+                    if (!isResend) {
+                        sendOtpBtn.innerText = "Send Secure OTP";
+                        sendOtpBtn.disabled = false;
+                    } else {
+                        resendBtn.innerText = "Resend OTP";
+                        resendBtn.disabled = false;
+                    }
+                }, 500);
+            }
+        }
+
+        // 2. VERIFY OTP MEIN 0.5s KA FAKE DELAY
+        function verifyOtpHandler() {
+            const otpValue = otpInput.value.trim();
+            if (otpValue.length !== 6) { alert("Please enter a valid 6-digit OTP."); otpInput.focus(); return; }
+
+            verifyOtpBtn.innerText = "Verifying...";
+            verifyOtpBtn.disabled = true;
+
+            const targetEmail = (currentMode === 'email') ? pendingValue : originalEmail;
+
+            // setTimeout lagaya 500ms (0.5 second) ka
+            setTimeout(async () => {
+                try {
+                    const response = await fetch('/verify_otp', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            otp: otpValue, 
+                            mode: currentMode, 
+                            email: targetEmail,
+                            name: studentName // Ensuring consistency
+                        })
+                    });
+                    const data = await response.json();
+
+                    if (data.success) {
+                        if (currentMode === 'email') hiddenEmail.value = pendingValue;
+                        else if (currentMode === 'password') hiddenPassword.value = pendingValue;
+                        
+                        // Submit hone do
+                        hiddenForm.submit(); 
+                    } else {
+                        alert(data.message);
+                        otpInput.value = '';
+                        otpInput.focus();
+                        verifyOtpBtn.innerText = "Verify & Save";
+                        verifyOtpBtn.disabled = false;
+                    }
+                } catch (error) {
+                    alert("Verification failed. Please try again.");
+                    verifyOtpBtn.innerText = "Verify & Save";
+                    verifyOtpBtn.disabled = false;
+                }
+            }, 500); // <-- Ye raha aapka 0.5s delay
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>{{ exam.title }} · Secure Proctored Mode</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #4f46e5; --danger: #dc2626; --warning: #f59e0b;
+            --success: #10b981; --bg-dark: #0f172a; --bg-card: #1e293b;
+            --text-primary: #f8fafc; --text-secondary: #94a3b8;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: var(--text-primary); min-height: 100vh; overflow-x: hidden;
+            -webkit-user-select: none !important; -moz-user-select: none !important;
+            -ms-user-select: none !important; user-select: none !important;
+            -webkit-touch-callout: none !important;
+        }
+        img, video, canvas { -webkit-user-drag: none !important; user-drag: none !important; pointer-events: none; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-dark); }
+        ::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 4px; }
+        .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 8vw; font-weight: 900; color: rgba(255,255,255,0.03); pointer-events: none; z-index: 1; white-space: nowrap; letter-spacing: 10px; }
+        .fortress-header { position: fixed; top: 0; left: 0; right: 0; height: 80px; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; padding: 0 30px; z-index: 1000; }
+        .exam-info h1 { font-size: 1.25rem; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+        .student-badge { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; color: var(--text-secondary); }
+        .status-indicator { width: 8px; height: 8px; background: var(--success); border-radius: 50%; animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .timer-container { text-align: center; }
+        .timer-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); margin-bottom: 4px; }
+        .timer-display { font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: var(--text-primary); background: rgba(220, 38, 38, 0.2); padding: 8px 20px; border-radius: 12px; border: 1px solid rgba(220, 38, 38, 0.3); transition: all 0.3s; }
+        .timer-display.critical { background: var(--danger); color: white; animation: urgent-pulse 1s infinite; }
+        @keyframes urgent-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        .proctor-panel { position: fixed; top: 100px; right: 20px; width: 280px; background: var(--bg-card); border-radius: 16px; padding: 20px; border: 1px solid rgba(255,255,255,0.1); z-index: 999; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+        .panel-header { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); }
+        .live-dot { width: 8px; height: 8px; background: var(--danger); border-radius: 50%; animation: blink 1s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .camera-feed { width: 100%; height: 160px; background: #000; border-radius: 12px; overflow: hidden; position: relative; border: 2px solid rgba(255,255,255,0.1); }
+        #proctorVideo { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        .scan-line { position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--success), transparent); animation: scan 2s linear infinite; }
+        @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
+        .ai-status { margin-top: 15px; padding: 12px; background: rgba(16, 185, 129, 0.1); border-radius: 8px; border-left: 3px solid var(--success); font-size: 0.875rem; transition: all 0.3s; }
+        .ai-status.warning { background: rgba(245, 158, 11, 0.1); border-left-color: var(--warning); }
+        .ai-status.danger { background: rgba(220, 38, 38, 0.1); border-left-color: var(--danger); }
+        .violation-counter { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(220, 38, 38, 0.1); border-radius: 8px; border: 1px solid rgba(220, 38, 38, 0.2); }
+        .violation-count { font-family: 'JetBrains Mono', monospace; font-size: 1.25rem; font-weight: 700; color: var(--danger); }
+        .exam-container { max-width: 800px; margin: 120px auto 40px; padding: 0 20px; position: relative; z-index: 10; }
+        #gatekeeper { position: fixed; inset: 0; background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-card) 100%); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 10000; text-align: center; padding: 40px; }
+        .gate-content { max-width: 500px; }
+        .security-icon { width: 80px; height: 80px; background: linear-gradient(135deg, var(--primary), #7c3aed); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 30px; font-size: 2.5rem; box-shadow: 0 20px 40px -10px rgba(79, 70, 229, 0.5); }
+        .gate-content h1 { font-size: 2rem; margin-bottom: 15px; font-weight: 700; }
+        .gate-content p { color: var(--text-secondary); margin-bottom: 30px; line-height: 1.6; }
+        .system-checks { text-align: left; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 12px; margin-bottom: 30px; font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; }
+        .check-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+        .check-icon { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; }
+        .check-icon.pending { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        .check-icon.pass { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+        .check-icon.fail { background: rgba(220, 38, 38, 0.2); color: var(--danger); }
+        .start-btn { padding: 16px 48px; font-size: 1.1rem; font-weight: 600; border: none; border-radius: 12px; background: linear-gradient(135deg, var(--primary), #7c3aed); color: white; cursor: pointer; transition: all 0.3s; box-shadow: 0 10px 30px -10px rgba(79, 70, 229, 0.5); }
+        .start-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 20px 40px -10px rgba(79, 70, 229, 0.6); }
+        .start-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .question-wrapper { display: none; }
+        .question-wrapper.active { display: block; animation: slideUp 0.4s ease-out; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .question-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .question-number { background: linear-gradient(135deg, var(--primary), #7c3aed); color: white; padding: 8px 20px; border-radius: 50px; font-weight: 600; font-size: 0.875rem; }
+        .marks-badge { color: var(--text-secondary); font-size: 0.875rem; }
+        .question-text { font-size: 1.25rem; line-height: 1.7; margin-bottom: 30px; color: var(--text-primary); font-weight: 500; }
+        .options-container { display: flex; flex-direction: column; gap: 12px; }
+        .option-card { display: flex; align-items: center; padding: 20px 24px; background: rgba(30, 41, 59, 0.5); border: 2px solid rgba(255,255,255,0.1); border-radius: 12px; cursor: pointer; transition: all 0.2s; position: relative; }
+        .option-card:hover { border-color: var(--primary); background: rgba(79, 70, 229, 0.1); transform: translateX(5px); }
+        .option-card.selected { border-color: var(--success); background: rgba(16, 185, 129, 0.1); }
+        .option-card input { display: none; }
+        .option-marker { width: 24px; height: 24px; border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; margin-right: 16px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; transition: all 0.2s; }
+        .option-card.selected .option-marker { background: var(--success); border-color: var(--success); color: white; }
+        .option-text { font-size: 1rem; color: var(--text-primary); }
+        .answer-textarea { width: 100%; min-height: 250px; padding: 20px; background: rgba(30, 41, 59, 0.5); border: 2px solid rgba(255,255,255,0.1); border-radius: 12px; color: var(--text-primary); font-size: 1rem; font-family: 'Inter', sans-serif; resize: vertical; transition: all 0.2s; }
+        .answer-textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); }
+        .nav-container { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 30px; border-top: 1px solid rgba(255,255,255,0.1); }
+        .nav-btn { display: flex; align-items: center; gap: 8px; padding: 14px 28px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.3s; border: none; font-size: 0.95rem; }
+        .nav-btn-prev { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+        .nav-btn-prev:hover { background: rgba(255,255,255,0.2); transform: translateX(-3px); }
+        .nav-btn-next { background: linear-gradient(135deg, var(--primary), #7c3aed); color: white; box-shadow: 0 10px 20px -5px rgba(79, 70, 229, 0.4); }
+        .nav-btn-next:hover { transform: translateX(3px); box-shadow: 0 15px 30px -5px rgba(79, 70, 229, 0.6); }
+        .nav-btn-submit { background: linear-gradient(135deg, var(--success), #059669); color: white; display: none; box-shadow: 0 10px 20px -5px rgba(16, 185, 129, 0.4); }
+        .nav-btn-submit:hover { transform: translateX(3px); box-shadow: 0 15px 30px -5px rgba(16, 185, 129, 0.6); }
+        .security-alert { position: fixed; top: 100px; left: 50%; transform: translateX(-50%) translateY(-100px); background: linear-gradient(135deg, var(--warning), #b45309); color: white; padding: 16px 32px; border-radius: 12px; z-index: 10001; font-weight: 600; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border: 1px solid rgba(255,255,255,0.2); opacity: 0; transition: all 0.3s; display: flex; align-items: center; gap: 12px; }
+        .security-alert.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .security-alert.critical { background: linear-gradient(135deg, var(--danger), #991b1b); }
+        #terminationOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 100000; text-align: center; padding: 40px; }
+        .termination-content { max-width: 500px; }
+        .termination-icon { font-size: 5rem; margin-bottom: 20px; }
+        .termination-content h2 { font-size: 2rem; color: var(--danger); margin-bottom: 15px; }
+        .termination-content p { color: var(--text-secondary); margin-bottom: 30px; }
+        .session-id { font-family: 'JetBrains Mono', monospace; background: rgba(255,255,255,0.1); padding: 10px 20px; border-radius: 8px; font-size: 0.875rem; }
+        @media (max-width: 1024px) { .proctor-panel { position: relative; top: auto; right: auto; width: 100%; margin-bottom: 20px; } .exam-container { margin-top: 100px; } }
+    </style>
+</head>
+<body>
+
+    <div class="watermark" id="watermark">SECURE EXAM</div>
+
+    <div id="securityAlert" class="security-alert">
+        <span style="font-size: 1.5rem;" id="alertIcon">⚠️</span>
+        <span id="alertText">Security Warning</span>
+    </div>
+
+    <div id="terminationOverlay">
+        <div class="termination-content">
+            <div class="termination-icon">🚫</div>
+            <h2>EXAM TERMINATED</h2>
+            <p id="terminationReason">Security violation detected.</p>
+            <div class="session-id" id="sessionIdDisplay">Session: ---</div>
+        </div>
+    </div>
+
+    <header class="fortress-header">
+        <div class="exam-info">
+            <h1>{{ exam.title }}</h1>
+            <div class="student-badge">
+                <div class="status-indicator"></div>
+                <span>{{ session.student_name }} • {{ session.admission_no }}</span>
+            </div>
+        </div>
+        <div class="timer-container">
+            <div class="timer-label">Time Remaining</div>
+            <div id="timerDisplay" class="timer-display">00:00:00</div>
+        </div>
+    </header>
+
+    <div class="proctor-panel">
+        <div class="panel-header">
+            <div class="live-dot"></div>
+            <span>LIVE PROCTORING</span>
+        </div>
+        <div class="camera-feed">
+            <video id="proctorVideo" autoplay playsinline muted></video>
+            <div class="scan-line"></div>
+        </div>
+        <div class="ai-status" id="aiStatus">
+            <div style="font-weight: 600; margin-bottom: 4px; color: var(--success);">● System Secure</div>
+            <div style="font-size: 0.8rem; opacity: 0.8;">AI monitoring active...</div>
+        </div>
+        <div class="violation-counter">
+            <span style="color: rgba(252, 165, 165, 0.8); font-size: 0.875rem;">Violations</span>
+            <span class="violation-count" id="violationCount">0/5</span>
+        </div>
+    </div>
+
+    <div id="gatekeeper">
+        <div class="gate-content">
+            <div class="security-icon">🛡️</div>
+            <h1>Secure Exam Environment</h1>
+            <p>Your exam will start in a locked-down browser. Camera initialization required.</p>
+            
+            <div class="system-checks" id="systemChecks">
+                <div class="check-item" id="check-camera">
+                    <span class="check-icon pending" id="icon-camera">⏳</span>
+                    <span>Camera Initialization</span>
+                </div>
+            </div>
+
+            <button class="start-btn" id="startBtn" onclick="fortress.init()">
+                Grant Camera Access & Start
+            </button>
+        </div>
+    </div>
+
+    <div class="exam-container" id="examContainer" style="display: none;">
+        <form id="examForm" method="POST" action="{{ url_for('submit_exam', exam_id=exam_id) }}">
+            {% for q in questions %}
+            <div class="question-wrapper" id="q-{{ loop.index0 }}" data-qid="{{ q.id }}">
+                <div class="question-header">
+                    <span class="question-number">Question {{ loop.index }} of {{ questions|length }}</span>
+                    <span class="marks-badge">{{ q.marks }} Marks</span>
+                </div>
+                <p class="question-text">{{ q.question_text }}</p>
+                
+                {% if q.question_type|lower == "mcq" %}
+                    <div class="options-container">
+                        <label class="option-card">
+                            <input type="radio" name="q{{ q.id }}" value="optionA" required>
+                            <span class="option-marker">A</span>
+                            <span class="option-text">{{ q.optionA }}</span>
+                        </label>
+                        <label class="option-card">
+                            <input type="radio" name="q{{ q.id }}" value="optionB">
+                            <span class="option-marker">B</span>
+                            <span class="option-text">{{ q.optionB }}</span>
+                        </label>
+                        <label class="option-card">
+                            <input type="radio" name="q{{ q.id }}" value="optionC">
+                            <span class="option-marker">C</span>
+                            <span class="option-text">{{ q.optionC }}</span>
+                        </label>
+                        <label class="option-card">
+                            <input type="radio" name="q{{ q.id }}" value="optionD">
+                            <span class="option-marker">D</span>
+                            <span class="option-text">{{ q.optionD }}</span>
+                        </label>
+                    </div>
+                {% elif q.question_type|lower == "msq" %}
+                    <div class="options-container">
+                        <label class="option-card">
+                            <input type="checkbox" name="q{{ q.id }}" value="optionA">
+                            <span class="option-marker">A</span>
+                            <span class="option-text">{{ q.optionA }}</span>
+                        </label>
+                        <label class="option-card">
+                            <input type="checkbox" name="q{{ q.id }}" value="optionB">
+                            <span class="option-marker">B</span>
+                            <span class="option-text">{{ q.optionB }}</span>
+                        </label>
+                        <label class="option-card">
+                            <input type="checkbox" name="q{{ q.id }}" value="optionC">
+                            <span class="option-marker">C</span>
+                            <span class="option-text">{{ q.optionC }}</span>
+                        </label>
+                        <label class="option-card">
+                            <input type="checkbox" name="q{{ q.id }}" value="optionD">
+                            <span class="option-marker">D</span>
+                            <span class="option-text">{{ q.optionD }}</span>
+                        </label>
+                    </div>
+                {% else %}
+                    <textarea class="answer-textarea" name="q{{ q.id }}" placeholder="Type your detailed answer here..."></textarea>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            <div class="nav-container">
+                <button type="button" class="nav-btn nav-btn-prev" id="prevBtn" onclick="navigate(-1)">← Previous</button>
+                <button type="button" class="nav-btn nav-btn-next" id="nextBtn" onclick="navigate(1)">Next →</button>
+                <button type="submit" class="nav-btn nav-btn-submit" id="submitBtn" onclick="return fortress.confirmSubmit()">Submit Exam ✓</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        class FortressExam {
+            constructor() {
+                this.currentQ = 0;
+                this.totalQ = {{ questions|length }};
+                this.warnings = 0;
+                this.maxWarnings = 50;
+                this.isActive = false;
+                this.isSubmitted = false;
+                this.sessionId = 'FRT-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+                
+                this.consecutiveAIFails = 0; 
+                this.maxAllowedFails = 3; 
+                
+                this.endTime = new Date("{{ exam_end }}").getTime();
+                document.getElementById('watermark').textContent = this.sessionId;
+            }
+
+            async init() {
+                const btn = document.getElementById('startBtn');
+                btn.textContent = "Connecting to Camera...";
+                btn.disabled = true;
+
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+                        audio: false
+                    });
+                    
+                    document.getElementById('proctorVideo').srcObject = stream;
+                    document.getElementById('icon-camera').className = 'check-icon pass';
+                    document.getElementById('icon-camera').textContent = '✓';
+                    
+                    setTimeout(() => {
+                        document.getElementById('gatekeeper').style.display = 'none';
+                        document.getElementById('examContainer').style.display = 'block';
+                        this.isActive = true;
+                        this.showQuestion(0);
+                        this.startTimer();
+                        this.startProctoring();
+                    }, 1000);
+                    
+                } catch (err) {
+                    document.getElementById('icon-camera').className = 'check-icon fail';
+                    document.getElementById('icon-camera').textContent = '✗';
+                    alert('Camera access is mandatory to start the exam. Please allow camera and refresh.');
+                    btn.textContent = "Camera Denied";
+                }
+            }
+
+            startTimer() {
+                const timerEl = document.getElementById('timerDisplay');
+                this.timerInterval = setInterval(() => {
+                    const now = Date.now();
+                    const diff = this.endTime - now;
+                    if (diff <= 0) {
+                        clearInterval(this.timerInterval);
+                        this.forceSubmit('Time expired');
+                        return;
+                    }
+                    const h = Math.floor(diff / 3600000);
+                    const m = Math.floor((diff % 3600000) / 60000);
+                    const s = Math.floor((diff % 60000) / 1000);
+                    timerEl.textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+                    if (h === 0 && m < 5) timerEl.classList.add('critical');
+                }, 1000);
+            }
+
+            startProctoring() {
+                this.proctoringInterval = setInterval(() => this.captureFrame(), 3000);
+            }
+
+            async captureFrame() {
+                if (!this.isActive || this.isSubmitted) return;
+                
+                const video = document.getElementById('proctorVideo');
+                const canvas = document.createElement('canvas');
+                
+                canvas.width = 640;
+                canvas.height = 480;
+                const ctx = canvas.getContext('2d');
+                
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                try {
+                    const res = await fetch('/detect_cheating', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            image: canvas.toDataURL('image/jpeg', 0.8),
+                            session: this.sessionId
+                        })
+                    });
+                    
+                    const data = await res.json();
+                    
+                    if (data.cheating) {
+                        this.consecutiveAIFails++;
+                        
+                        if (this.consecutiveAIFails >= this.maxAllowedFails) {
+                            this.logViolation(data.reason, 1);
+                            this.updateAIStatus('danger', data.reason);
+                            this.consecutiveAIFails = 0; 
+                        } else {
+                            this.showWarningToast(`Please center your face / Ensure good lighting. (${this.consecutiveAIFails}/${this.maxAllowedFails})`);
+                            this.updateAIStatus('warning', 'Face tracking unstable...');
+                        }
+                    } else {
+                        this.consecutiveAIFails = 0; 
+                        this.updateAIStatus('success', 'Monitoring active...');
+                    }
+                } catch (e) {
+                    console.warn('Proctoring sync delay');
+                }
+            }
+
+            showWarningToast(message) {
+                const alert = document.getElementById('securityAlert');
+                alert.className = 'security-alert show'; 
+                document.getElementById('alertIcon').textContent = '👀';
+                document.getElementById('alertText').textContent = message;
+                setTimeout(() => alert.classList.remove('show'), 2500);
+            }
+
+            updateAIStatus(status, message) {
+                const el = document.getElementById('aiStatus');
+                el.className = `ai-status ${status}`;
+                const color = status === 'danger' ? '#ef4444' : status === 'warning' ? '#f59e0b' : '#10b981';
+                el.innerHTML = `
+                    <div style="font-weight: 600; margin-bottom: 4px; color: ${color};">
+                        ● ${status === 'danger' ? 'ALERT' : status === 'warning' ? 'WARNING' : 'System Secure'}
+                    </div>
+                    <div style="font-size: 0.8rem; opacity: 0.8;">${message}</div>
+                `;
+            }
+
+            logViolation(reason, severity = 1) {
+                if (this.isSubmitted) return;
+                
+                this.warnings += severity;
+                document.getElementById('violationCount').textContent = `${this.warnings}/${this.maxWarnings}`;
+                
+                const alert = document.getElementById('securityAlert');
+                alert.className = 'security-alert critical show';
+                document.getElementById('alertIcon').textContent = '🚨';
+                document.getElementById('alertText').textContent = `${reason} (+${severity} Violation)`;
+                
+                try {
+                    const ctx = new AudioContext();
+                    const osc = ctx.createOscillator();
+                    osc.connect(ctx.destination);
+                    osc.frequency.value = 800;
+                    osc.start();
+                    osc.stop(ctx.currentTime + 0.3);
+                } catch(e) {}
+                
+                setTimeout(() => alert.classList.remove('show'), 4000);
+                
+                if (this.warnings >= this.maxWarnings) {
+                    this.forceSubmit('Maximum violations reached');
+                }
+            }
+
+            showQuestion(idx) {
+                document.querySelectorAll('.question-wrapper').forEach(q => q.classList.remove('active'));
+                document.getElementById(`q-${idx}`).classList.add('active');
+                document.getElementById('prevBtn').style.visibility = idx === 0 ? 'hidden' : 'visible';
+                
+                if (idx === this.totalQ - 1) {
+                    document.getElementById('nextBtn').style.display = 'none';
+                    document.getElementById('submitBtn').style.display = 'flex';
+                } else {
+                    document.getElementById('nextBtn').style.display = 'flex';
+                    document.getElementById('submitBtn').style.display = 'none';
+                }
+                this.currentQ = idx;
+            }
+
+            navigate(direction) {
+                const newIdx = this.currentQ + direction;
+                if (newIdx >= 0 && newIdx < this.totalQ) {
+                    this.showQuestion(newIdx);
+                }
+            }
+
+            confirmSubmit() {
+                if (!confirm('⚠️ FINAL SUBMISSION\n\nAre you sure? You cannot return after submitting.')) {
+                    return false;
+                }
+                this.submitExam();
+                return true;
+            }
+
+            forceSubmit(reason) {
+                if (this.isSubmitted) return;
+                this.isSubmitted = true;
+                this.isActive = false;
+                
+                clearInterval(this.proctoringInterval);
+                clearInterval(this.timerInterval);
+                
+                document.getElementById('terminationReason').textContent = reason;
+                document.getElementById('sessionIdDisplay').textContent = `Session: ${this.sessionId}`;
+                document.getElementById('terminationOverlay').style.display = 'flex';
+                
+                setTimeout(() => { document.getElementById('examForm').submit(); }, 3000);
+            }
+
+            submitExam() { this.isSubmitted = true; }
+        }
+
+        // --- NEW CLEAN FIX: Native Input Event Listeners ---
+        // Ye code automatically input pe change detect karega aur styling apply karega
+        document.addEventListener('DOMContentLoaded', () => {
+            const inputs = document.querySelectorAll('.option-card input');
+            
+            inputs.forEach(input => {
+                input.addEventListener('change', function() {
+                    const card = this.closest('.option-card');
+                    
+                    if (this.type === 'radio') {
+                        // MCQ: Doosre sabhi options se 'selected' class hata do
+                        const parent = card.closest('.options-container');
+                        parent.querySelectorAll('.option-card').forEach(c => c.classList.remove('selected'));
+                        // Current option pe 'selected' class laga do
+                        card.classList.add('selected');
+                    } 
+                    else if (this.type === 'checkbox') {
+                        // MSQ: Agar checked hai toh 'selected' lagao, warna hata do
+                        if (this.checked) {
+                            card.classList.add('selected');
+                        } else {
+                            card.classList.remove('selected');
+                        }
+                    }
+                });
+            });
+        });
+
+        // Form Navigation
+        function navigate(dir) { fortress.navigate(dir); }
+
+        const fortress = new FortressExam();
+    </script>
+</body>
+</html>
