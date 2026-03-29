@@ -3,228 +3,243 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OEMS - Results Dashboard</title>
+    <title>OEMS · Results Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Poppins', sans-serif;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
 
         body {
-            background-color: #f4f7f6;
-            color: #333333;
-            min-height: 100vh;
-            padding: 2rem;
+            background-color: #f4f7f6; color: #333; min-height: 100vh; padding: 2rem;
             background-image: radial-gradient(circle at top right, #eef2f3, transparent 40%),
                               radial-gradient(circle at bottom left, #e0eafc, transparent 40%);
         }
 
-        .dashboard-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            animation: fadeIn 0.8s ease-in-out;
-        }
+        .dashboard-container { max-width: 1200px; margin: 0 auto; animation: fadeIn 0.8s ease-in-out; }
 
-        /* Header Section with Flexbox */
-        .header-section {
-            margin-bottom: 3rem;
-        }
+        /* Header */
+        .header-section { margin-bottom: 2.5rem; }
+        .header-content { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .header-title { font-size: 2.2rem; font-weight: 600; color: #2c3e50; text-transform: uppercase; letter-spacing: 2px; }
+        .back-btn { display: inline-block; color: #555; text-decoration: none; font-size: 0.95rem; border: 1px solid #ccc; padding: 9px 22px; border-radius: 25px; transition: 0.3s; background: white; white-space: nowrap; font-weight: 500; }
+        .back-btn:hover { background: #f0f0f0; color: #111; border-color: #aaa; }
+        .split-line { width: 100%; height: 2px; background: linear-gradient(90deg, transparent, #007bff, #00c6ff, #007bff, transparent); animation: glowingLine 2s infinite alternate; }
 
-        .header-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem; /* Text aur split line ke beech ki exact doori */
-        }
+        /* FIX: Summary stats strip */
+        .stats-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+        .stat-pill { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); border: 1px solid rgba(0,0,0,0.05); border-radius: 12px; padding: 1rem 1.2rem; text-align: center; box-shadow: 0 4px 15px rgba(31,38,135,0.05); }
+        .stat-pill-val { font-size: 1.7rem; font-weight: 600; color: #2c3e50; }
+        .stat-pill-lbl { font-size: 0.78rem; color: #6c757d; font-weight: 500; margin-top: 2px; }
 
-        .header-title {
-            font-size: 2.5rem;
-            font-weight: 600;
-            color: #2c3e50;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
+        /* FIX: Search + Filter bar */
+        .toolbar { display: flex; gap: 12px; margin-bottom: 1.2rem; flex-wrap: wrap; align-items: center; }
+        .search-box { flex: 1; min-width: 200px; padding: 9px 14px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 0.9rem; font-family: 'Poppins', sans-serif; background: white; color: #2c3e50; outline: none; transition: 0.2s; }
+        .search-box:focus { border-color: #007bff; box-shadow: 0 0 0 3px rgba(0,123,255,0.08); }
+        .filter-select { padding: 9px 14px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 0.9rem; font-family: 'Poppins', sans-serif; background: white; color: #2c3e50; outline: none; cursor: pointer; }
 
-        /* Navigation Button (Now in Header) */
-        .back-btn {
-            display: inline-block;
-            color: #555555;
-            text-decoration: none;
-            font-size: 1rem;
-            border: 1px solid #cccccc;
-            padding: 10px 25px;
-            border-radius: 25px;
-            transition: 0.3s;
-            background: white;
-            white-space: nowrap; /* Taki text break na ho */
-        }
+        /* Table */
+        .table-wrapper { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); border: 1px solid rgba(0,0,0,0.05); border-radius: 15px; overflow-x: auto; box-shadow: 0 8px 32px rgba(31,38,135,0.07); }
+        .table-header { padding: 1.2rem 1.5rem; border-bottom: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center; }
+        .table-title { font-size: 1.05rem; font-weight: 600; color: #2c3e50; }
+        .record-count { font-size: 0.82rem; color: #6c757d; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { background: rgba(0,123,255,0.05); color: #0056b3; padding: 0.9rem 1rem; font-weight: 600; letter-spacing: 0.5px; border-bottom: 2px solid #e9ecef; white-space: nowrap; font-size: 0.85rem; cursor: pointer; user-select: none; }
+        th:hover { background: rgba(0,123,255,0.1); }
+        th.sorted-asc::after  { content: ' ↑'; }
+        th.sorted-desc::after { content: ' ↓'; }
+        td { padding: 0.9rem 1rem; border-bottom: 1px solid #e9ecef; color: #495057; vertical-align: middle; font-size: 0.88rem; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(0,123,255,0.02); }
 
-        .back-btn:hover {
-            background: #f0f0f0;
-            color: #111111;
-            border-color: #aaaaaa;
-        }
+        /* FIX: Score badge — color coded by score range */
+        .score-badge { padding: 4px 12px; border-radius: 20px; font-weight: 600; font-size: 0.82rem; display: inline-block; }
+        .score-high   { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+        .score-mid    { background: #fff3e0; color: #e65100; border: 1px solid #ffe0b2; }
+        .score-low    { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+        .score-pending{ background: #f3e8ff; color: #6d28d9; border: 1px solid #ddd6fe; }
 
-        /* Animated Split Line */
-        .split-line {
-            width: 100%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, #007bff, #00c6ff, #007bff, transparent);
-            box-shadow: 0 0 10px rgba(0, 123, 255, 0.4);
-            animation: glowingLine 2s infinite alternate;
-        }
+        .status-badge { padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; display: inline-block; }
+        .status-eval  { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+        .status-pend  { background: #fff3e0; color: #e65100; border: 1px solid #ffe0b2; }
 
-        /* Glassmorphism Table Container */
-        .table-wrapper {
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(0, 0, 0, 0.05);
-            border-radius: 15px;
-            padding: 1.5rem;
-            overflow-x: auto;
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
-        }
+        .btn-view { display: inline-block; text-decoration: none; color: #fff; background: linear-gradient(45deg, #007bff, #00c6ff); padding: 6px 16px; border-radius: 20px; font-size: 0.82rem; font-weight: 500; transition: 0.3s; box-shadow: 0 4px 12px rgba(0,123,255,0.2); white-space: nowrap; }
+        .btn-view:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,123,255,0.35); color: white; }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            text-align: left;
-        }
+        .empty-state { text-align: center; padding: 3rem; color: #6c757d; }
 
-        th {
-            background: rgba(0, 123, 255, 0.05);
-            color: #0056b3;
-            padding: 1rem;
-            font-weight: 600;
-            letter-spacing: 1px;
-            border-bottom: 2px solid #e9ecef;
-            white-space: nowrap;
-        }
+        @keyframes fadeIn      { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes glowingLine { from{opacity:0.6} to{opacity:1;box-shadow:0 0 12px rgba(0,198,255,0.6)} }
 
-        td {
-            padding: 1rem;
-            border-bottom: 1px solid #e9ecef;
-            color: #495057;
-            vertical-align: middle;
-        }
-
-        tr:hover td {
-            background: rgba(0, 123, 255, 0.02);
-            transition: 0.3s;
-        }
-
-        /* Soft Score Badge */
-        .score-badge {
-            background: #e8f5e9;
-            color: #2e7d32;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-weight: 600;
-            border: 1px solid #c8e6c9;
-            box-shadow: 0 2px 5px rgba(46, 125, 50, 0.1);
-        }
-
-        /* Modern Gradient Button */
-        .btn-view {
-            display: inline-block;
-            text-decoration: none;
-            color: #ffffff;
-            background: linear-gradient(45deg, #007bff, #00c6ff);
-            padding: 8px 20px;
-            border-radius: 25px;
-            font-size: 0.9rem;
-            font-weight: 500;
-            transition: 0.3s;
-            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.2);
-            white-space: nowrap;
-        }
-
-        .btn-view:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
-        }
-
-        /* Animations */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        @keyframes glowingLine {
-            from { opacity: 0.6; box-shadow: 0 0 5px rgba(0, 123, 255, 0.3); }
-            to { opacity: 1; box-shadow: 0 0 12px rgba(0, 198, 255, 0.6); }
-        }
-
-        /* Responsive Design */
         @media (max-width: 768px) {
-            .header-content {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 1rem; /* Mobile par title aur button ke beech gap */
-            }
-            .header-title { font-size: 1.8rem; }
-            body { padding: 1rem; }
-            .table-wrapper { padding: 1rem; }
-            td, th { padding: 0.8rem; font-size: 0.9rem; }
+            .header-content { flex-direction: column; align-items: flex-start; gap: 1rem; }
+            .header-title { font-size: 1.7rem; }
+            td, th { padding: 0.7rem; }
         }
     </style>
 </head>
 <body>
+<div class="dashboard-container">
 
-    <div class="dashboard-container">
-        
-        <div class="header-section">
-            <div class="header-content">
-                <h1 class="header-title">Results Dashboard</h1>
-                <a href="/admin" class="back-btn">← Back to Dashboard</a>
-            </div>
-            <div class="split-line"></div>
+    <!-- Header -->
+    <div class="header-section">
+        <div class="header-content">
+            <h1 class="header-title">Results Dashboard</h1>
+            <a href="/admin" class="back-btn">← Back to Dashboard</a>
         </div>
+        <div class="split-line"></div>
+    </div>
 
-        <div class="table-wrapper">
-            <table>
-                <thead>
+    <!-- FIX: Summary stats strip -->
+    <div class="stats-strip">
+        <div class="stat-pill">
+            <div class="stat-pill-val" id="totalCount">{{ results|length if results else 0 }}</div>
+            <div class="stat-pill-lbl">Total Submissions</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-pill-val" id="evaluatedCount">
+                {{ results|selectattr('submission_status','equalto','Evaluated')|list|length if results else 0 }}
+            </div>
+            <div class="stat-pill-lbl">Evaluated</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-pill-val" id="pendingCount">
+                {{ results|selectattr('submission_status','equalto','Pending')|list|length if results else 0 }}
+            </div>
+            <div class="stat-pill-lbl">Pending AI Check</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-pill-val" id="avgScore">
+                {% if results %}
+                    {% set scores = results|selectattr('total_score')|map(attribute='total_score')|list %}
+                    {% if scores %}{{ (scores|sum / scores|length)|round(1) }}{% else %}—{% endif %}
+                {% else %}—{% endif %}
+            </div>
+            <div class="stat-pill-lbl">Avg Score</div>
+        </div>
+    </div>
+
+    <!-- FIX: Search + filter toolbar -->
+    <div class="toolbar">
+        <input class="search-box" id="searchBox" type="text" placeholder="Search by name, admission no, or course...">
+        <select class="filter-select" id="statusFilter" onchange="filterTable()">
+            <option value="">All Status</option>
+            <option value="Evaluated">Evaluated</option>
+            <option value="Pending">Pending</option>
+        </select>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrapper">
+        <div class="table-header">
+            <div class="table-title">Student Results</div>
+            <div class="record-count" id="recordCount">{{ results|length if results else 0 }} records</div>
+        </div>
+        <table id="resultsTable">
+            <thead>
+                <tr>
+                    <th onclick="sortTable(0)">Student Name</th>
+                    <th onclick="sortTable(1)">Admission No</th>
+                    <th onclick="sortTable(2)">Program (Branch)</th>
+                    <th onclick="sortTable(3)">Semester</th>
+                    <th onclick="sortTable(4)">Course</th>
+                    <th onclick="sortTable(5)">Score</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody">
+                {% if results %}
+                    {% for r in results %}
                     <tr>
-                        <th>Student Name</th>
-                        <th>Admission No</th>
-                        <th>Program (branch)</th>
-                        <th>Semester</th>
-                        <th>Course Name</th>
-                        <th>Total Score</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for result in results %}
-                    <tr>
-                        <td>{{ result.student_name }}</td>
-                        <td><span style="font-family: monospace;">{{ result.admission_no }}</span></td>
-                        <td>{{ result.program }} ({{ result.branch }})</td>
-                        <td>Sem ({{ result.semester}})</td>
-                        <td>{{ result.exam_title }}</td>
-                        <td><span class="score-badge">{{ result.total_score }}</span></td>
+                        <td style="font-weight:500;color:#2c3e50;">{{ r.student_name }}</td>
+                        <td><span style="font-family:monospace;font-size:0.85rem;">{{ r.admission_no }}</span></td>
+                        <td>{{ r.program }} ({{ r.branch }})</td>
+                        <td>Sem ({{ r.semester }})</td>
+                        <td>{{ r.exam_title }}</td>
+
+                        <!-- FIX: Color-coded score badge -->
                         <td>
-                            <a href="/result_details/{{ result.student_id }}/{{ result.exam_id }}" class="btn-view">
-                                View Details
-                            </a>
+                            {% if r.total_score is not none %}
+                                {% set score = r.total_score|float %}
+                                {% if score >= 60 %}
+                                    <span class="score-badge score-high">{{ r.total_score }}</span>
+                                {% elif score >= 35 %}
+                                    <span class="score-badge score-mid">{{ r.total_score }}</span>
+                                {% else %}
+                                    <span class="score-badge score-low">{{ r.total_score }}</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="score-badge score-pending">Pending</span>
+                            {% endif %}
                         </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="6" style="text-align: center; color: #888888; padding: 2rem;">
-                            No results generated yet.
+
+                        <td>
+                            {% if r.submission_status == 'Evaluated' %}
+                                <span class="status-badge status-eval">✓ Evaluated</span>
+                            {% else %}
+                                <span class="status-badge status-pend">⏳ Pending</span>
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            <a href="/result_details/{{ r.student_id }}/{{ r.exam_id }}" class="btn-view">View Details</a>
                         </td>
                     </tr>
                     {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
+                {% else %}
+                    <tr>
+                        <td colspan="8" class="empty-state">No results yet.</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
     </div>
 
+</div>
+<script>
+    // ── Search + Filter ──
+    document.getElementById('searchBox').addEventListener('input', filterTable);
+
+    function filterTable() {
+        const q      = document.getElementById('searchBox').value.toLowerCase();
+        const status = document.getElementById('statusFilter').value.toLowerCase();
+        const rows   = document.querySelectorAll('#resultsBody tr');
+        let visible  = 0;
+
+        rows.forEach(row => {
+            const text   = row.textContent.toLowerCase();
+            const rowSt  = row.children[6] ? row.children[6].textContent.toLowerCase() : '';
+            const matchQ = !q || text.includes(q);
+            const matchS = !status || rowSt.includes(status);
+            row.style.display = (matchQ && matchS) ? '' : 'none';
+            if (matchQ && matchS) visible++;
+        });
+
+        document.getElementById('recordCount').textContent = visible + ' records';
+    }
+
+    // ── Sort ──
+    let sortDir = {};
+    function sortTable(colIdx) {
+        const tbody = document.getElementById('resultsBody');
+        const rows  = Array.from(tbody.querySelectorAll('tr'));
+        const dir   = (sortDir[colIdx] === 'asc') ? 'desc' : 'asc';
+        sortDir     = {}; sortDir[colIdx] = dir;
+
+        // Update header arrows
+        document.querySelectorAll('th').forEach((th, i) => {
+            th.className = i === colIdx ? 'sorted-' + dir : '';
+        });
+
+        rows.sort((a, b) => {
+            const aT = a.children[colIdx] ? a.children[colIdx].textContent.trim() : '';
+            const bT = b.children[colIdx] ? b.children[colIdx].textContent.trim() : '';
+            const aN = parseFloat(aT), bN = parseFloat(bT);
+            if (!isNaN(aN) && !isNaN(bN)) return dir === 'asc' ? aN - bN : bN - aN;
+            return dir === 'asc' ? aT.localeCompare(bT) : bT.localeCompare(aT);
+        });
+
+        rows.forEach(r => tbody.appendChild(r));
+    }
+</script>
 </body>
 </html>

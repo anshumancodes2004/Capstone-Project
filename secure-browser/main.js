@@ -1,16 +1,34 @@
-const { app, BrowserWindow, globalShortcut, Menu } = require('electron');
-const { exec } = require('child_process');
+const { app, BrowserWindow, globalShortcut, Menu, ipcMain } = require('electron');
+const path = require('path');
+const fs = require('fs');
 const os = require('os');
 
 const CONFIG = {
-    baseUrl: 'http://127.0.0.1:5000' 
+    baseUrl: 'http://127.0.0.1:5000'
 };
 
 let mainWindow;
-
-// Ye flag decide karega ki app ko close hone dena hai ya nahi
 let isSafeToQuit = false;
 
+// ============================================================
+// VIOLATION LOG FILE SETUP
+// Violations ek local file mein save honge proof ke liye
+// ============================================================
+const logPath = path.join(os.homedir(), 'oems_violations.log');
+
+function writeLog(message) {
+    const timestamp = new Date().toISOString();
+    const line = `[${timestamp}] ${message}\n`;
+    try {
+        fs.appendFileSync(logPath, line);
+    } catch (e) {
+        console.error('Log write failed:', e);
+    }
+}
+
+// ============================================================
+// APP READY
+// ============================================================
 app.whenReady().then(() => {
     Menu.setApplicationMenu(null);
 
@@ -21,97 +39,148 @@ app.whenReady().then(() => {
         frame: false,
         webPreferences: {
             nodeIntegration: false,
-            contextIsolation: true
+            contextIsolation: true,
+            preload: path.join(__dirname, 'preload.js'),
+            // Extra hardening
+            webSecurity: true,
+            allowRunningInsecureContent: false,
+            experimentalFeatures: false,
         }
+    });
+
+    // FIX: Secure browser signature — Flask ko pata chalega ki Electron chal raha hai
+    mainWindow.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
+        details.requestHeaders['X-OEMS-Secure-Browser'] = 'ElectronV1';
+        callback({ requestHeaders: details.requestHeaders });
     });
 
     mainWindow.loadURL(CONFIG.baseUrl);
-    
-    // Security check: Domain restrict karna
+    writeLog('SESSION STARTED — OEMS Exam Browser launched.');
+
+    // ============================================================
+    // FIX 1: will-navigate — sirf allowed URLs
+    // ============================================================
     mainWindow.webContents.on('will-navigate', (event, url) => {
-        if (!url.includes('127.0.0.1:5000') && !url.includes('localhost:5000')) {
+        const allowed =
+            url.startsWith('http://127.0.0.1:5000') ||
+            url.startsWith('http://localhost:5000');
+        if (!allowed) {
             event.preventDefault();
+            writeLog(`BLOCKED navigation attempt to: ${url}`);
         }
     });
 
-    // ==========================================
-    // 1. COPY-PASTE & RIGHT-CLICK BLOCK
-    // ==========================================
+    // ============================================================
+    // FIX 2: NEW WINDOW BLOCK — window.open() ya _blank links
+    // Pehle yeh missing tha — student naya unrestricted window
+    // khol sakta tha
+    // ============================================================
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        writeLog(`BLOCKED new window attempt: ${url}`);
+        return { action: 'deny' };
+    });
+
+    // ============================================================
+    // FIX 3: COPY-PASTE & RIGHT-CLICK BLOCK (page load ke baad)
+    // ============================================================
     mainWindow.webContents.on('did-finish-load', () => {
         mainWindow.webContents.executeJavaScript(`
-            // Right-click disable karega
-            document.addEventListener('contextmenu', event => event.preventDefault());
-            // Copy, Cut, Paste disable karega
-            document.addEventListener('copy', event => event.preventDefault());
-            document.addEventListener('cut', event => event.preventDefault());
-            document.addEventListener('paste', event => event.preventDefault());
-            // Text selection (highlighting) disable karega
+            document.addEventListener('contextmenu', e => e.preventDefault());
+            document.addEventListener('copy',  e => e.preventDefault());
+            document.addEventListener('cut',   e => e.preventDefault());
+            document.addEventListener('paste', e => e.preventDefault());
             document.body.style.userSelect = 'none';
             document.body.style.webkitUserSelect = 'none';
         `);
     });
 
-    // ==========================================
-    // 2. ADMIN TERMINAL SHORTCUT
-    // ==========================================
-    globalShortcut.register('CommandOrControl+Shift+T', () => {
-        if (os.platform() === 'win32') {
-            exec('start cmd'); 
-        } else if (os.platform() === 'darwin') {
-            exec('open -a Terminal'); 
-        } else {
-            exec('x-terminal-emulator'); 
-        }
-    });
-
-    // ==========================================
-    // 3. KEYBOARD SHORTCUTS BLOCK
-    // ==========================================
+    // ============================================================
+    // FIX 4: KEYBOARD SHORTCUTS BLOCK
+    // F11, F12, Alt+Tab add kiye — terminal shortcut HATA DIYA
+    // ============================================================
     const blockedShortcuts = [
-        'CommandOrControl+R',           // Reload
-        'F5',                           // Reload
-        'CommandOrControl+Shift+I',     // Developer Tools
-        'CommandOrControl+W',           // Close Tab/Window
-        'Alt+F4',                       // Close Window (Windows)
-        'CommandOrControl+C',           // Copy (Keyboard)
-        'CommandOrControl+V',           // Paste (Keyboard)
-        'CommandOrControl+X',           // Cut (Keyboard)
-        'CommandOrControl+Option+Space' // Mac Finder/Spotlight
+        'CommandOrControl+R',         // Reload
+        'F5',                         // Reload
+        'F11',                        // Fullscreen toggle
+        'F12',                        // DevTools (backup)
+        'CommandOrControl+Shift+I',   // DevTools
+        'CommandOrControl+Shift+J',   // DevTools (Chrome style)
+        'CommandOrControl+W',         // Close tab
+        'CommandOrControl+N',         // New window
+        'CommandOrControl+T',         // New tab
+        'Alt+F4',                     // Windows close
+        'CommandOrControl+C',         // Copy
+        'CommandOrControl+V',         // Paste
+        'CommandOrControl+X',         // Cut
+        'CommandOrControl+A',         // Select all
+        'CommandOrControl+Option+Space', // Mac Spotlight
+        'CommandOrControl+Tab',       // App switch
+        'Alt+Tab',                    // Windows app switch
+        'CommandOrControl+M',         // Minimize
+        'CommandOrControl+H',         // Hide (Mac)
+        // NOTE: CommandOrControl+Shift+T HATA DIYA —
+        // yeh terminal backdoor tha jो student bhi use kar sakta tha
     ];
 
     blockedShortcuts.forEach(key => {
         try {
             globalShortcut.register(key, () => {
-                console.log(`${key} is blocked during the exam.`);
+                writeLog(`BLOCKED shortcut attempt: ${key}`);
             });
         } catch (err) {
-            console.log(`Warning: Failed to block ${key}`);
+            console.log(`Warning: Could not block ${key} — ${err.message}`);
         }
     });
+
+    writeLog(`Blocked ${blockedShortcuts.length} keyboard shortcuts.`);
 });
 
-// ==========================================
-// 4. FORCE QUIT (Cmd+Q) BLOCKER
-// ==========================================
+// ============================================================
+// FIX 5: IPC LISTENERS — preload.js se aane wale events
+// Pehle yeh missing tha — ipcRenderer.send() silently fail hota tha
+// ============================================================
+
+// Violation log karo
+ipcMain.on('violation', (event, data) => {
+    const msg = `VIOLATION | type=${data.type} | details=${data.details}`;
+    console.log(`[OEMS] ${msg}`);
+    writeLog(msg);
+});
+
+// Exam submit — safely quit karo
+ipcMain.on('submit-exam', (event) => {
+    writeLog('EXAM SUBMITTED — safe quit triggered.');
+    isSafeToQuit = true;
+    // 2 second baad quit karo taaki Flask form submit complete ho sake
+    setTimeout(() => app.quit(), 2000);
+});
+
+// ============================================================
+// FORCE QUIT BLOCKER (Cmd+Q)
+// ============================================================
 app.on('before-quit', (event) => {
-    // Agar command line se kill signal nahi aaya hai, toh quit cancel kar do
     if (!isSafeToQuit) {
         event.preventDefault();
-        console.log("Force quit (Cmd+Q) is disabled!");
+        writeLog('BLOCKED force quit attempt (Cmd+Q or similar).');
+        console.log('[OEMS] Force quit blocked.');
     }
 });
 
-// Jab Admin terminal se 'killall Electron' chalayega, tabhi app band hoga
+// Admin graceful shutdown — terminal se killall / kill
 process.on('SIGTERM', () => {
-    isSafeToQuit = true;
-    app.quit();
-});
-process.on('SIGINT', () => {
+    writeLog('SIGTERM received — admin shutdown.');
     isSafeToQuit = true;
     app.quit();
 });
 
-// Memory clear karne ke liye
+process.on('SIGINT', () => {
+    writeLog('SIGINT received — admin shutdown.');
+    isSafeToQuit = true;
+    app.quit();
+});
+
+// Cleanup
 app.on('will-quit', () => {
     globalShortcut.unregisterAll();
+    writeLog('SESSION ENDED — shortcuts unregistered.\n' + '='.repeat(60));
 });

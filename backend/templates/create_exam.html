@@ -337,12 +337,12 @@
                 <div class="form-grid">
                     
                     <div class="form-group full-width">
-                        <label class="form-label">Exam Title <span>*</span></label>
+                        <label class="form-label">Exam Title<span>*</span></label>
                         <input type="text" name="title" class="form-control" placeholder="E.g., Python Programming" required>
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Exam Type <span>*</span></label>
+                        <label class="form-label">Exam Type<span>*</span></label>
                         <select name="exam_type" class="form-control" required>
                             <option value="" disabled selected>Select type</option>
                             <option value="mcq/msq">Multiple Choice / Multiple Select (MCQ/MSQ)</option>
@@ -387,7 +387,7 @@
                     </div>                    
 
                     <div class="form-group">
-                        <label class="form-label">Semester <span>*</span></label>
+                        <label class="form-label">Semester<span>*</span></label>
                         <select name="semester" class="form-control" required>
                             <option value="" disabled selected>Select semester</option>
                             <option value="I">1st Semester</option>
@@ -402,18 +402,44 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Total Marks <span>*</span></label>
+                        <label class="form-label">Total Marks<span>*</span></label>
                         <input type="number" name="total_marks" class="form-control" placeholder="E.g., 100" min="1" required>
                     </div>
 
                     <div class="form-group full-width">
-                        <label class="form-label">Start Date & Time <span>*</span></label>
+                        <label class="form-label">Start Date & Time<span>*</span></label>
                         <input type="text" id="start_time" name="start_time" class="form-control" placeholder="Select start date and time" required autocomplete="off">
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label">Duration (Minutes) <span>*</span></label>
+                        <label class="form-label">Duration (Minutes)<span>*</span></label>
                         <input type="number" id="duration" name="duration" class="form-control" placeholder="E.g., 120" min="1" required>
+                    </div>
+
+                    <!--
+                      =============================================================
+                      create_exam.html mein yeh 2 form-group blocks add karo
+                      Duration field ke BAAD, form-actions se PEHLE
+                      =============================================================
+                    -->
+
+                    <div class="form-group full-width">
+                        <label class="form-label">Browser Mode<span>*</span></label>
+                        <select name="browser_mode" class="form-control" required>
+                            <option value="" disabled selected>Select browser mode</option>
+                            <option value="any">Any Browser (default)</option>
+                            <option value="secure_any">Secure Browser Only</option>
+                            <option value="secure_campus">Secure Browser + Campus Only</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label class="form-label">AI Proctoring<span>*</span></label>
+                        <select name="ai_proctoring" class="form-control" required>
+                            <option value="" disabled selected>Select AI Proctoring</option>
+                            <option value="0">Disabled — AI Proctoring</option>
+                            <option value="1">Enabled — AI Proctoring</option>
+                        </select>
                     </div>
 
                     <div class="form-group">
