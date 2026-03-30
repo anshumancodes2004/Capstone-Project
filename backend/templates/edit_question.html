@@ -388,13 +388,9 @@
                     </div>
 
                     {% else %}
-                    <div class="form-group full-width">
-                        <label class="form-label">Correct Answer Outline (Optional)</label>
-                        <input type="text" name="correct_answer" class="form-control" value="{{ question.correct_answer or '' }}">
-                        <div class="form-hint">Reference text for theory evaluation.</div>
-                    </div>
+                        {# Theory question — no options, no correct_answer field needed #}
                     {% endif %}
-
+                    
                     <div class="form-group full-width">
                         <label class="form-label">Marks <span>*</span></label>
                         <input type="number" name="marks" class="form-control" value="{{ question.marks }}" min="1" required>
@@ -405,7 +401,12 @@
                 <div class="info-card">
                     <div class="info-icon-box">💡</div>
                     <div class="info-text">
-                        Modifying this question will immediately update it in the database. <strong>MCQ detected:</strong> If only one answer was saved, picking a new one will uncheck the old one.
+                        {% if question.optionA or question.optionB %}
+                            Modifying this question will update the database. 
+                            For MCQ — selecting a new correct answer will uncheck the previous one.
+                        {% else %}
+                            Modifying this theory question will immediately update it in the database.
+                        {% endif %}
                     </div>
                 </div>
 
@@ -420,47 +421,53 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const backendData = document.getElementById('backendData').getAttribute('data-correct');
-            const checkboxes = document.querySelectorAll('input[name="correct_answer"]');
-            
-            // 1. Load data and auto-tick checkboxes
-            if (backendData) {
-                const savedAnswers = backendData.split(',').map(a => a.trim()).filter(a => a !== "");
+            const backendData = document.getElementById('backendData')
+                                        .getAttribute('data-correct');
+            const checkboxes  = document.querySelectorAll('input[name="correct_answer"]');
                 
-                checkboxes.forEach(function(box) {
-                    if (savedAnswers.includes(box.value)) {
-                        box.checked = true;
-                    }
-                });
-
-                // 2. MCQ vs MSQ Logic
-                // Agar saved data mein sirf 1 answer hai, toh ise MCQ (Single Select) ki tarah force karein
-                if (savedAnswers.length <= 1) {
+            // Sirf MCQ/MSQ mein checkboxes hote hain — theory mein zero hote hain
+            if (checkboxes.length > 0) {
+            
+                // Saved answers auto-tick karo
+                if (backendData) {
+                    const savedAnswers = backendData
+                        .split(',')
+                        .map(a => a.trim())
+                        .filter(a => a !== '');
+                
                     checkboxes.forEach(box => {
-                        box.addEventListener('change', function() {
-                            if (this.checked) {
-                                // Baki sabko uncheck kar do (Radio behavior)
-                                checkboxes.forEach(other => {
-                                    if (other !== this) other.checked = false;
-                                });
-                            }
-                        });
+                        if (savedAnswers.includes(box.value)) box.checked = true;
                     });
-                }
-            }
-
-            // 3. Validation before submit
-            const form = document.getElementById('questionForm');
-            if (form) {
-                form.addEventListener('submit', function(e) {
-                    const selectedBoxes = document.querySelectorAll('input[name="correct_answer"]:checked');
-                    
-                    if (selectedBoxes.length === 0) {
-                        e.preventDefault();
-                        alert("Please select at least one Correct Answer!");
+                
+                    // MCQ behavior — sirf ek select ho
+                    if (savedAnswers.length <= 1) {
+                        checkboxes.forEach(box => {
+                            box.addEventListener('change', function() {
+                                if (this.checked) {
+                                    checkboxes.forEach(other => {
+                                        if (other !== this) other.checked = false;
+                                    });
+                                }
+                            });
+                        });
                     }
-                });
+                }
+            
+                // Validation — sirf MCQ/MSQ ke liye
+                document.getElementById('questionForm')
+                    ?.addEventListener('submit', function(e) {
+                        const checked = document.querySelectorAll(
+                            'input[name="correct_answer"]:checked'
+                        );
+                        if (checked.length === 0) {
+                            e.preventDefault();
+                            alert('Please select at least one Correct Answer!');
+                        }
+                    });
+                
             }
+            // Theory question mein checkboxes.length === 0
+            // toh poora block skip — koi validation nahi
         });
     </script>
 

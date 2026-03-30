@@ -23,16 +23,26 @@ import base64
 from ultralytics import YOLO
 import requests
 from dotenv import load_dotenv
+import google.generativeai as genai
 
 
 # ============================================================
-# FIX 1: .env se saari secrets load karo
+# .env se saari secrets load karo
 # ============================================================
 load_dotenv()
 
+# ============================================================
+# Gemini 2.5 Flash (API)
+# ============================================================
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+gemini_model = genai.GenerativeModel("gemini-2.5-flash")
+
 app = Flask(__name__)
 
-# FIX 2: Strong random secret key — .env se
+
+# ============================================================
+# Strong random secret key — .env se
+# ============================================================
 app.secret_key = os.environ.get("SECRET_KEY")
 if not app.secret_key:
     raise RuntimeError(
@@ -44,7 +54,7 @@ if not app.secret_key:
 
 
 # ============================================================
-# FIX 3: DB credentials .env se + Connection Pooling
+# DB credentials .env se + Connection Pooling
 # ============================================================
 db_pool = mysql.connector.pooling.MySQLConnectionPool(
     pool_name="oems_pool",
@@ -55,6 +65,7 @@ db_pool = mysql.connector.pooling.MySQLConnectionPool(
     database=os.environ.get("DB_NAME", "exam_system")
 )
 
+
 # ---------------- DATABASE CONNECTION ----------------
 def get_db_connection():
     return db_pool.get_connection()
@@ -62,7 +73,7 @@ def get_db_connection():
 
 # ---------------- BROWSER + CAMPUS HELPERS ----------------
 CAMPUS_IP_RANGES = [
-    10.104.242.78
+    "10.104.242",
 ]
 
 def is_secure_browser():
@@ -399,12 +410,16 @@ def add_question(exam_id):
     return render_template("add_question.html", exam=exam, question_count=question_count, max_limit=max_limit)
 
 
-# ---------------- EDIT QUESTION ----------------
+# ============================================================
+# QUESTION EDIT ROUTE
+# ============================================================
 @app.route("/edit_question/<int:question_id>", methods=["GET", "POST"])
 @login_required("admin")
 def edit_question(question_id):
+
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
+
     cursor.execute("SELECT * FROM questions WHERE id=%s", (question_id,))
     question = cursor.fetchone()
 
@@ -420,22 +435,48 @@ def edit_question(question_id):
         optionC = request.form.get("optionC")
         optionD = request.form.get("optionD")
         marks = request.form.get("marks")
-        selected_options = request.form.getlist("correct_answer")
-        correct_answer = ",".join(selected_options) if selected_options else request.form.get("correct_answer", "")
+
+        # AUTO DETECT TYPE
+        is_mcq = optionA or optionB or optionC or optionD
+
+        if is_mcq:
+            selected_options = request.form.getlist("correct_answer")
+            correct_answer = ",".join(selected_options) if selected_options else ""
+        else:
+            correct_answer = request.form.get("correct_answer", "")
 
         cursor.execute("""
             UPDATE questions
-            SET question_text=%s, optionA=%s, optionB=%s, optionC=%s, optionD=%s, correct_answer=%s, marks=%s
+            SET question_text=%s,
+                optionA=%s,
+                optionB=%s,
+                optionC=%s,
+                optionD=%s,
+                correct_answer=%s,
+                marks=%s
             WHERE id=%s
-        """, (question_text, optionA, optionB, optionC, optionD, correct_answer, marks, question_id))
+        """, (
+            question_text,
+            optionA,
+            optionB,
+            optionC,
+            optionD,
+            correct_answer,
+            marks,
+            question_id
+        ))
+
         conn.commit()
         exam_id = question["exam_id"]
+
         cursor.close()
         conn.close()
+
         return redirect(f"/questions/{exam_id}")
 
     cursor.close()
     conn.close()
+
     return render_template("edit_question.html", question=question)
 
 
@@ -882,86 +923,122 @@ def delete_student(id):
 
 # ---------------- AI EVALUATION HELPER ----------------
 def evaluate_answer(question, student_answer, max_marks):
-    if not student_answer or len(student_answer.split()) < 5 or len(student_answer) < 20:
-        return 0, "Answer too short or irrelevant."
-
-    prompt = f"""
-You are a strict university exam evaluator.
-
-Question:
-{question}
-
-Student Answer:
-{student_answer}
-
+    """
+    Gemini 2.5 Flash se theory answer evaluate karo.
+    Returns: (score, feedback)
+    """
+ 
+    # Bahut chota ya irrelevant answer — Gemini call bhi mat karo
+    if not student_answer or len(student_answer.strip()) < 20:
+        return 0, "Answer too short or not provided."
+ 
+    word_count = len(student_answer.split())
+    if word_count < 5:
+        return 0, "Answer too short to evaluate."
+ 
+    prompt = f"""You are a strict university exam evaluator.
+ 
+Question: {question}
+ 
+Student Answer: {student_answer}
+ 
 Rules:
-1. If the answer is unrelated to the question → Score: 0
-2. If the answer is random text or name → Score: 0
-3. If the answer is extremely short → Score: 0
-4. Give marks only if the concept is explained correctly.
-5. Score must be between 0 and {max_marks}
-
-Return only this format:
-
-Score: number
-Feedback: short reason
-"""
+1. If the answer is completely unrelated to the question, give Score: 0
+2. If the answer is random text, a name, or gibberish, give Score: 0
+3. If the answer is too short (less than 5 words), give Score: 0
+4. Award marks proportionally based on how correctly and completely the concept is explained.
+5. Score must be a number between 0 and {max_marks}. No decimals above 0.5 steps.
+6. Be strict but fair.
+ 
+Respond in EXACTLY this format (nothing else):
+Score: <number>
+Feedback: <one sentence reason>"""
+ 
     try:
-        response = requests.post(
-            "http://127.0.0.1:11434/api/generate",
-            json={"model": "llama3", "prompt": prompt, "stream": False}
-        )
-        result = response.json()["response"]
-        score_match = re.search(r'Score:\s*(\d+(\.\d+)?)', result)
-        score = float(score_match.group(1)) if score_match else 0
-        feedback_match = re.search(r'[Ff]eedback:\s*(.*)', result)
-        feedback = feedback_match.group(1) if feedback_match else result
+        response = gemini_model.generate_content(prompt)
+        result   = response.text.strip()
+ 
+        # Score parse karo
+        score_match    = re.search(r'Score:\s*(\d+(\.\d+)?)', result)
+        feedback_match = re.search(r'Feedback:\s*(.*)', result)
+ 
+        score    = float(score_match.group(1))    if score_match    else 0
+        feedback = feedback_match.group(1).strip() if feedback_match else "Evaluated"
+ 
+        # Score ko max_marks se cap karo — Gemini kabhi kabhi zyada de deta hai
+        score = min(score, float(max_marks))
+        score = max(score, 0)
+ 
     except Exception as e:
-        print("AI ERROR:", e)
-        score = 0
-        feedback = "AI evaluation failed."
-
+        print(f"Gemini evaluation error: {e}")
+        score    = 0
+        feedback = "AI evaluation failed — please re-run."
+ 
     return score, feedback
 
 
 # ---------------- AI CHECKING ROUTE ----------------
+import time
+ 
 @app.route("/run_ai_check")
 @login_required("admin")
 def run_ai_check():
-    conn = get_db_connection()
+ 
+    conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
+ 
+    # Sirf theory questions jo evaluate nahi hue
     cursor.execute("""
-    SELECT answers.id, answers.answer, questions.question_text, questions.marks
-    FROM answers
-    JOIN questions ON answers.question_id = questions.id
-    WHERE answers.score IS NULL AND questions.question_type = 'theory'
+        SELECT answers.id, answers.answer,
+               questions.question_text, questions.marks
+        FROM answers
+        JOIN questions ON answers.question_id = questions.id
+        WHERE answers.score IS NULL
+        AND questions.question_type = 'theory'
     """)
     records = cursor.fetchall()
-    print("TOTAL RECORDS (Theory Only):", len(records))
-
-    for r in records:
-        question = r["question_text"]
+ 
+    print(f"[Gemini] Total pending theory answers: {len(records)}")
+ 
+    evaluated = 0
+    failed    = 0
+ 
+    for i, r in enumerate(records):
+        question       = r["question_text"]
         student_answer = r["answer"]
-        max_marks = r["marks"]
-
-        if not student_answer or len(student_answer.split()) < 5 or len(student_answer) < 20:
+        max_marks      = r["marks"]
+ 
+        # Khali answer — Gemini call mat karo
+        if not student_answer or len(student_answer.strip()) < 20:
             cursor.execute(
                 "UPDATE answers SET score=%s, feedback=%s WHERE id=%s",
                 (0, "No answer submitted or answer too short.", r["id"])
             )
+            evaluated += 1
             continue
-
+ 
         score, feedback = evaluate_answer(question, student_answer, max_marks)
-        print("FINAL SCORE:", score)
+ 
+        print(f"[Gemini] Answer #{r['id']} → Score: {score}/{max_marks}")
+ 
         cursor.execute(
             "UPDATE answers SET score=%s, feedback=%s WHERE id=%s",
-            (score, feedback, r["id"])
+            (round(score, 1), feedback, r["id"])
         )
-
+        evaluated += 1
+ 
+        # ── Rate limiting: 10 RPM = max 10 requests/minute ──
+        # Har 10 requests ke baad 65 seconds wait karo
+        if (i + 1) % 10 == 0 and (i + 1) < len(records):
+            print(f"[Gemini] Rate limit pause — 65s wait ({i+1}/{len(records)} done)")
+            time.sleep(65)
+ 
     conn.commit()
     cursor.close()
     conn.close()
-    return "AI Evaluation Completed"
+ 
+    print(f"[Gemini] Evaluation complete — {evaluated} evaluated, {failed} failed")
+    return f"AI Evaluation Complete — {evaluated} answers evaluated."
 
 
 # ---------------- PLAGIARISM DETECTION ROUTE ----------------
