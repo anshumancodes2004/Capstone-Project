@@ -108,9 +108,9 @@
         <div class="info-group">
             <h2 class="info-name">{{ user.name }}</h2>
             <div class="info-badges">
-                <span class="badge highlight">{{ user.admission_no }}</span>
-                <span class="badge">{{ user.program }} ({{ user.branch }})</span>
-                <span class="badge">Sem {{ user.semester }}</span>
+                <span class="badge highlight">Admission No: {{ user.admission_no }}</span>
+                <span class="badge">Program (branch): {{ user.program }} ({{ user.branch }})</span>
+                <span class="badge">Semester: Sem ({{ user.semester }})</span>
                 {% if user.email %}
                 <span class="badge">{{ user.email }}</span>
                 {% endif %}
@@ -332,7 +332,7 @@
 
         // FIX: Agar password mode mein email nahi hai — warn karo
         if (mode === 'password' && !originalEmail) {
-            showError('No email on file. Please set an email first before changing password.');
+            showError('No email set. Please set an email first before changing password.');
             sendOtpBtn.disabled = true;
         } else {
             sendOtpBtn.disabled = false;

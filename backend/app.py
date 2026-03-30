@@ -62,10 +62,7 @@ def get_db_connection():
 
 # ---------------- BROWSER + CAMPUS HELPERS ----------------
 CAMPUS_IP_RANGES = [
-    "192.168.1.",
-    "10.0.0.",
-    "172.16.0.",
-    # apne college ka actual IP range daalo
+    10.104.242.78
 ]
 
 def is_secure_browser():
