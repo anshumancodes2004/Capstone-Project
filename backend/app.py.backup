@@ -1689,6 +1689,7 @@ class EmailService:
         except Exception as e:
             logger.error(f"SMTP Connection failed: {str(e)}")
             raise
+            
     
     def send_otp_email(self, receiver_email, otp, mode="email", user_name="Student"):
         """Send OTP email with improved error handling"""
