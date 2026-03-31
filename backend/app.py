@@ -23,19 +23,26 @@ import base64
 from ultralytics import YOLO
 import requests
 from dotenv import load_dotenv
-import google.generativeai as genai
+import io
+import re
+import time
+from datetime import datetime
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table,
+    TableStyle, HRFlowable, PageBreak
+)
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from sentence_transformers import SentenceTransformer
 
 
 # ============================================================
 # .env se saari secrets load karo
 # ============================================================
 load_dotenv()
-
-# ============================================================
-# Gemini 2.5 Flash (API)
-# ============================================================
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-gemini_model = genai.GenerativeModel("gemini-2.5-flash")
 
 app = Flask(__name__)
 
@@ -71,6 +78,18 @@ def get_db_connection():
     return db_pool.get_connection()
 
 
+# ============================================================
+# Sentence-BERT Model Load
+# ============================================================
+print("[OEMS] Loading evaluation model...")
+try:
+    sbert_model = SentenceTransformer('all-MiniLM-L6-v2')
+    print("[OEMS] Model ready!")
+except Exception as e:
+    sbert_model = None
+    print(f"[OEMS] Model load failed: {e}")
+
+
 # ---------------- BROWSER + CAMPUS HELPERS ----------------
 CAMPUS_IP_RANGES = [
     "10.104.242",
@@ -85,6 +104,598 @@ def is_campus_ip():
     if forwarded:
         client_ip = forwarded.split(',')[0].strip()
     return any(client_ip.startswith(p) for p in CAMPUS_IP_RANGES)
+
+
+# ============================================================
+# PDF GENERATOR
+# ============================================================
+def generate_result_pdf(student, exam, answers, total_score, percentage):
+    """
+    Student exam result ka PDF generate karo.
+    Returns: bytes (PDF file content)
+    """
+    buffer = io.BytesIO()
+ 
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=2*cm,
+        leftMargin=2*cm,
+        topMargin=2*cm,
+        bottomMargin=2*cm
+    )
+ 
+    styles = getSampleStyleSheet()
+ 
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Title'],
+        fontSize=22,
+        textColor=colors.HexColor('#1e293b'),
+        spaceAfter=6,
+        fontName='Helvetica-Bold'
+    )
+    heading_style = ParagraphStyle(
+        'SectionHeading',
+        parent=styles['Heading2'],
+        fontSize=13,
+        textColor=colors.HexColor('#4f46e5'),
+        spaceBefore=14,
+        spaceAfter=6,
+        fontName='Helvetica-Bold'
+    )
+    normal_style = ParagraphStyle(
+        'CustomNormal',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.HexColor('#374151'),
+        spaceAfter=4,
+        leading=16
+    )
+    muted_style = ParagraphStyle(
+        'Muted',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=colors.HexColor('#6b7280'),
+        spaceAfter=3
+    )
+    center_style = ParagraphStyle(
+        'Center',
+        parent=styles['Normal'],
+        alignment=TA_CENTER,
+        fontSize=10,
+        textColor=colors.HexColor('#374151')
+    )
+ 
+    story = []
+ 
+    # ── HEADER ──
+    story.append(Paragraph("OEMS — Examination Result Report", title_style))
+    story.append(HRFlowable(
+        width="100%", thickness=2,
+        color=colors.HexColor('#4f46e5'), spaceAfter=12
+    ))
+ 
+    # ── SECTION 1: Student Details ──
+    story.append(Paragraph("Section 1: Student Details", heading_style))
+ 
+    student_name  = str(student.get('name', 'N/A'))
+    student_email = str(student.get('email', 'N/A') or 'Not provided')
+    exam_title    = str(exam.get('title', 'N/A'))
+    exam_date     = str(exam.get('start_time', 'N/A'))
+    admission_no  = str(student.get('admission_no', 'N/A'))
+    program       = str(student.get('program', 'N/A'))
+    semester      = str(student.get('semester', 'N/A'))
+ 
+    detail_data = [
+        ['Field', 'Value'],
+        ['Student Name',    student_name],
+        ['Admission No',    admission_no],
+        ['Email',           student_email],
+        ['Program',         f"{program} — Semester {semester}"],
+        ['Exam Name',       exam_title],
+        ['Exam Date',       exam_date],
+        ['Report Generated', datetime.now().strftime('%d %b %Y, %I:%M %p')],
+    ]
+ 
+    detail_table = Table(detail_data, colWidths=[5*cm, 12*cm])
+    detail_table.setStyle(TableStyle([
+        ('BACKGROUND',  (0,0), (-1,0), colors.HexColor('#4f46e5')),
+        ('TEXTCOLOR',   (0,0), (-1,0), colors.white),
+        ('FONTNAME',    (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE',    (0,0), (-1,0), 10),
+        ('BACKGROUND',  (0,1), (0,-1), colors.HexColor('#f1f5f9')),
+        ('FONTNAME',    (0,1), (0,-1), 'Helvetica-Bold'),
+        ('FONTSIZE',    (0,1), (-1,-1), 10),
+        ('TEXTCOLOR',   (0,1), (-1,-1), colors.HexColor('#374151')),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1),
+            [colors.white, colors.HexColor('#f8fafc')]),
+        ('GRID',        (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('PADDING',     (0,0), (-1,-1), 8),
+        ('VALIGN',      (0,0), (-1,-1), 'MIDDLE'),
+    ]))
+    story.append(detail_table)
+    story.append(Spacer(1, 16))
+ 
+    # ── SECTION 2: Question-wise Analysis ──
+    story.append(Paragraph("Section 2: Question-wise Analysis", heading_style))
+ 
+    for idx, ans in enumerate(answers, 1):
+        q_text       = str(ans.get('question_text', 'N/A'))
+        student_ans  = str(ans.get('student_answer', '') or '').strip()
+        q_marks      = ans.get('marks', 0)
+        score        = ans.get('score', 0) or 0
+        feedback     = str(ans.get('feedback', 'Pending evaluation') or 'Pending evaluation')
+ 
+        if not student_ans:
+            student_ans = 'Not Answered'
+ 
+        # Question block
+        q_bg = colors.HexColor('#fefce8') if score == 0 else colors.HexColor('#f0fdf4')
+ 
+        q_data = [
+            [Paragraph(f'<b>Q{idx}.</b> {q_text}', normal_style), ''],
+            ['Student Answer:', Paragraph(student_ans, normal_style)],
+            ['Marks Obtained:', Paragraph(
+                f'<b>{score} / {q_marks}</b>',
+                ParagraphStyle('Score', parent=normal_style,
+                    textColor=colors.HexColor('#16a34a') if score > 0
+                    else colors.HexColor('#dc2626'))
+            )],
+            ['AI Feedback:', Paragraph(feedback, muted_style)],
+        ]
+ 
+        q_table = Table(q_data, colWidths=[4*cm, 13*cm])
+        q_table.setStyle(TableStyle([
+            ('SPAN',        (0,0), (-1,0)),
+            ('BACKGROUND',  (0,0), (-1,0), colors.HexColor('#eef2ff')),
+            ('FONTNAME',    (0,0), (-1,0), 'Helvetica-Bold'),
+            ('BACKGROUND',  (0,1), (0,-1), colors.HexColor('#f8fafc')),
+            ('FONTNAME',    (0,1), (0,-1), 'Helvetica-Bold'),
+            ('FONTSIZE',    (0,0), (-1,-1), 10),
+            ('GRID',        (0,0), (-1,-1), 0.3, colors.HexColor('#e2e8f0')),
+            ('PADDING',     (0,0), (-1,-1), 8),
+            ('VALIGN',      (0,0), (-1,-1), 'TOP'),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1),
+                [colors.white, colors.HexColor('#fafafa')]),
+        ]))
+        story.append(q_table)
+        story.append(Spacer(1, 8))
+ 
+    story.append(PageBreak())
+ 
+    # ── SECTION 3: Summary ──
+    story.append(Paragraph("Section 3: Performance Summary", heading_style))
+ 
+    total_q     = len(answers)
+    attempted   = sum(1 for a in answers
+                      if str(a.get('student_answer', '') or '').strip())
+    not_attempted = total_q - attempted
+    max_marks   = sum(a.get('marks', 0) for a in answers)
+    pct         = round(percentage, 1)
+ 
+    # Grade
+    if pct >= 90:   grade, grade_color = 'O (Outstanding)', '#16a34a'
+    elif pct >= 75: grade, grade_color = 'A (Excellent)',   '#22c55e'
+    elif pct >= 60: grade, grade_color = 'B (Good)',        '#3b82f6'
+    elif pct >= 45: grade, grade_color = 'C (Average)',     '#f59e0b'
+    elif pct >= 35: grade, grade_color = 'D (Pass)',        '#f97316'
+    else:           grade, grade_color = 'F (Fail)',        '#ef4444'
+ 
+    summary_data = [
+        ['Metric', 'Value'],
+        ['Total Questions',     str(total_q)],
+        ['Attempted',           str(attempted)],
+        ['Not Attempted',       str(not_attempted)],
+        ['Total Score',         f'{total_score} / {max_marks}'],
+        ['Percentage',          f'{pct}%'],
+        ['Grade',               grade],
+    ]
+ 
+    summary_table = Table(summary_data, colWidths=[8*cm, 9*cm])
+    summary_table.setStyle(TableStyle([
+        ('BACKGROUND',  (0,0), (-1,0), colors.HexColor('#4f46e5')),
+        ('TEXTCOLOR',   (0,0), (-1,0), colors.white),
+        ('FONTNAME',    (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE',    (0,0), (-1,0), 10),
+        ('BACKGROUND',  (0,1), (0,-1), colors.HexColor('#f1f5f9')),
+        ('FONTNAME',    (0,1), (0,-1), 'Helvetica-Bold'),
+        ('FONTSIZE',    (0,1), (-1,-1), 11),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1),
+            [colors.white, colors.HexColor('#f8fafc')]),
+        ('GRID',        (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+        ('PADDING',     (0,0), (-1,-1), 10),
+        ('VALIGN',      (0,0), (-1,-1), 'MIDDLE'),
+    ]))
+    story.append(summary_table)
+    story.append(Spacer(1, 16))
+ 
+    # ── SECTION 4: AI Overall Feedback ──
+    story.append(Paragraph("Section 4: AI Performance Feedback", heading_style))
+ 
+    if pct >= 75:
+        overall_fb = (f"Excellent performance! The student demonstrated strong understanding "
+                      f"of the subject matter, scoring {pct}%. Keep up the great work.")
+    elif pct >= 50:
+        overall_fb = (f"Good attempt. The student scored {pct}% showing adequate understanding. "
+                      f"Review the questions where marks were deducted to improve further.")
+    elif pct >= 35:
+        overall_fb = (f"The student scored {pct}%. While the basic concepts are understood, "
+                      f"more practice and deeper study of the subject is recommended.")
+    else:
+        overall_fb = (f"The student scored {pct}%. Significant improvement is needed. "
+                      f"Please review the course material thoroughly and seek guidance.")
+ 
+    fb_table = Table(
+        [[Paragraph(overall_fb, normal_style)]],
+        colWidths=[17*cm]
+    )
+    fb_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#eef2ff')),
+        ('BORDER',     (0,0), (-1,-1), 1, colors.HexColor('#c7d2fe')),
+        ('PADDING',    (0,0), (-1,-1), 12),
+    ]))
+    story.append(fb_table)
+    story.append(Spacer(1, 20))
+ 
+    # ── SECTION 5: Footer ──
+    story.append(HRFlowable(
+        width="100%", thickness=1,
+        color=colors.HexColor('#e2e8f0'), spaceBefore=10
+    ))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(
+        f"Generated by OEMS — Online Examination Management System | "
+        f"{datetime.now().strftime('%d %b %Y, %I:%M %p')}",
+        ParagraphStyle('Footer', parent=muted_style,
+                       alignment=TA_CENTER, fontSize=8)
+    ))
+ 
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.read()
+
+
+# ---------------- AI EVALUATION HELPER ----------------
+def evaluate_answer(question, student_answer, max_marks, model_answer=None):
+    """
+    Hybrid: Sentence-BERT + TF-IDF + Keyword scoring
+    3 layers — offline, no internet, no API needed.
+ 
+    model_answer: agar admin ne provide kiya hai toh
+                  student answer usse compare hoga (better accuracy)
+                  nahi hai toh question se compare hoga
+    """
+    if not student_answer or len(student_answer.strip()) < 10:
+        return 0, "Answer too short or not provided."
+ 
+    word_count = len(student_answer.split())
+    if word_count < 5:
+        return 0, "Answer too short to evaluate."
+ 
+    student_clean = student_answer.strip().lower()
+ 
+    # Reference text — model answer hai toh woh use karo,
+    # nahi hai toh question se compare karo
+    if model_answer and len(model_answer.strip()) > 10:
+        reference_text  = model_answer.strip()
+        reference_clean = reference_text.lower()
+        comparison_mode = "model_answer"
+    else:
+        reference_text  = question.strip()
+        reference_clean = question.strip().lower()
+        comparison_mode = "question"
+ 
+    print(f"[Eval] Mode: {comparison_mode}")
+ 
+    # ── Layer 1: Keyword Overlap ──
+    stop_words = {
+        'what','is','are','the','a','an','of','in','to',
+        'and','or','for','with','how','why','explain',
+        'describe','define','write','give','list','state'
+    }
+    ref_words = set(reference_clean.split()) - stop_words
+    s_words   = set(student_clean.split())
+ 
+    keyword_score = 0.0
+    if ref_words:
+        matched      = ref_words & s_words
+        keyword_score = len(matched) / len(ref_words)
+ 
+    # ── Layer 2: TF-IDF Cosine Similarity ──
+    tfidf_score = 0.0
+    try:
+        vectorizer   = TfidfVectorizer(stop_words='english', min_df=1)
+        tfidf_matrix = vectorizer.fit_transform([reference_clean, student_clean])
+        tfidf_score  = float(
+            cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]
+        )
+    except Exception:
+        tfidf_score = keyword_score
+ 
+    # ── Layer 3: Sentence-BERT Semantic Similarity ──
+    sbert_score = 0.0
+    if sbert_model is not None:
+        try:
+            embeddings  = sbert_model.encode([reference_text, student_answer])
+            sbert_score = float(
+                cosine_similarity([embeddings[0]], [embeddings[1]])[0][0]
+            )
+            sbert_score = max(0.0, sbert_score)
+        except Exception as e:
+            print(f"[SBERT] Error: {e}")
+            sbert_score = (keyword_score + tfidf_score) / 2
+    else:
+        sbert_score = (keyword_score + tfidf_score) / 2
+ 
+    # ── Weighted Average ──
+    combined = (
+        sbert_score   * 0.60 +
+        tfidf_score   * 0.25 +
+        keyword_score * 0.15
+    )
+    combined = max(0.0, min(1.0, combined))
+ 
+    # Length bonus
+    if word_count >= 80:
+        combined = min(1.0, combined + 0.05)
+    elif word_count >= 40:
+        combined = min(1.0, combined + 0.02)
+ 
+    # Score calculate karo
+    raw_score = combined * float(max_marks)
+    score     = round(raw_score * 2) / 2  # 0.5 steps
+ 
+    # Feedback
+    if combined >= 0.75:
+        feedback = f"Excellent answer. Concepts clearly explained. Score: {score}/{max_marks}."
+    elif combined >= 0.55:
+        feedback = f"Good attempt. Key concepts covered. Score: {score}/{max_marks}."
+    elif combined >= 0.35:
+        feedback = f"Partial answer. More detail needed. Score: {score}/{max_marks}."
+    elif combined >= 0.15:
+        feedback = f"Minimal relevance to the question. Score: {score}/{max_marks}."
+    else:
+        feedback = f"Answer does not address the question. Score: {score}/{max_marks}."
+ 
+    print(f"[Eval] SBERT={sbert_score:.2f} TFIDF={tfidf_score:.2f} "
+          f"KW={keyword_score:.2f} → {score}/{max_marks}")
+ 
+    return score, feedback
+
+
+# ============================================================
+# BACKGROUND EVALUATION FUNCTION
+# ============================================================
+def run_background_evaluation(student_id, exam_id, app_context):
+    with app_context:
+        try:
+            conn   = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+ 
+            # correct_answer bhi fetch karo
+            cursor.execute("""
+                SELECT a.id, a.answer, q.question_text,
+                       q.marks, q.question_type, q.correct_answer
+                FROM answers a
+                JOIN questions q ON a.question_id = q.id
+                WHERE a.student_id = %s
+                  AND a.exam_id   = %s
+                  AND q.question_type = 'theory'
+                  AND a.score IS NULL
+            """, (student_id, exam_id))
+            theory_answers = cursor.fetchall()
+ 
+            print(f"[BG Eval] Student {student_id}, Exam {exam_id} "
+                  f"— {len(theory_answers)} answers")
+ 
+            for i, ans in enumerate(theory_answers):
+                student_answer = (ans['answer'] or '').strip()
+ 
+                if not student_answer or len(student_answer) < 10:
+                    score, feedback = 0, "No answer submitted or too short."
+                else:
+                    score, feedback = evaluate_answer(
+                        ans['question_text'],
+                        student_answer,
+                        ans['marks'],
+                        model_answer=ans.get('correct_answer', '')
+                    )
+ 
+                cursor.execute(
+                    "UPDATE answers SET score=%s, feedback=%s WHERE id=%s",
+                    (round(score, 1), feedback, ans['id'])
+                )
+                print(f"[BG Eval] #{ans['id']} → {score}/{ans['marks']}")
+ 
+            conn.commit()
+ 
+            # Total score recalculate
+            cursor.execute("""
+                SELECT COALESCE(SUM(a.score), 0) AS total
+                FROM answers a
+                WHERE a.student_id = %s AND a.exam_id = %s
+            """, (student_id, exam_id))
+            total_score = float(cursor.fetchone()['total'] or 0)
+ 
+            # Results update
+            cursor.execute("""
+                UPDATE results
+                SET total_score = %s, submission_status = 'Evaluated'
+                WHERE student_id = %s AND exam_id = %s
+            """, (round(total_score, 2), student_id, exam_id))
+            conn.commit()
+ 
+            print(f"[BG Eval] Results updated — Total: {total_score}")
+ 
+            # Student + Exam + Answers for PDF
+            cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
+            student = cursor.fetchone()
+ 
+            cursor.execute("SELECT * FROM exams WHERE id = %s", (exam_id,))
+            exam = cursor.fetchone()
+ 
+            cursor.execute("""
+                SELECT q.question_text, q.marks, q.question_type,
+                       a.answer AS student_answer, a.score, a.feedback
+                FROM answers a
+                JOIN questions q ON a.question_id = q.id
+                WHERE a.student_id = %s AND a.exam_id = %s
+                ORDER BY q.id
+            """, (student_id, exam_id))
+            all_answers = cursor.fetchall()
+ 
+            cursor.close()
+            conn.close()
+ 
+            for ans in all_answers:
+                if ans['score']          is None: ans['score']          = 0
+                if not ans['feedback']:           ans['feedback']        = 'Evaluated'
+                if not ans['student_answer']:     ans['student_answer']  = ''
+ 
+            max_marks  = sum(a['marks'] for a in all_answers)
+            percentage = (total_score / max_marks * 100) if max_marks > 0 else 0
+ 
+            pdf_bytes = generate_result_pdf(
+                student, exam, all_answers, total_score, percentage
+            )
+ 
+            student_email = student.get('email')
+            if student_email and is_valid_email(student_email):
+                send_result_email(student, exam, total_score, percentage, pdf_bytes)
+            else:
+                print(f"[BG Eval] No email — skipped")
+ 
+        except Exception as e:
+            print(f"[BG Eval] ERROR: {e}")
+            import traceback
+            traceback.print_exc()
+
+
+# ============================================================
+# RESULT EMAIL SENDER
+# ============================================================
+def send_result_email(student, exam, total_score, percentage, pdf_bytes):
+    """Student ko result email bhejo with PDF attachment."""
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.base import MIMEBase
+    from email import encoders
+    from email.utils import formataddr
+ 
+    try:
+        student_name  = student.get('name', 'Student')
+        student_email = student.get('email')
+        exam_title    = exam.get('title', 'Exam')
+ 
+        msg = MIMEMultipart('mixed')
+        msg['From']    = formataddr(('OEMS Examination', EMAIL_CONFIG['SENDER_EMAIL']))
+        msg['To']      = student_email
+        msg['Subject'] = f"Your Result: {exam_title} — OEMS"
+ 
+        pct = round(percentage, 1)
+        if pct >= 35:
+            result_word  = "PASS"
+            result_color = "#16a34a"
+        else:
+            result_word  = "FAIL"
+            result_color = "#dc2626"
+ 
+        html = f"""
+        <html><body style="font-family:Arial,sans-serif;background:#f4f7f6;padding:20px;">
+        <table align="center" width="100%"
+               style="max-width:550px;background:#fff;border-radius:10px;
+                      border:1px solid #e2e8f0;overflow:hidden;margin:0 auto;">
+            <tr>
+                <td style="background:#4f46e5;padding:20px;text-align:center;">
+                    <h2 style="margin:0;color:#fff;font-size:20px;">
+                        Exam Result — OEMS
+                    </h2>
+                </td>
+            </tr>
+            <tr>
+                <td style="padding:24px;">
+                    <p style="color:#374151;">Hi <b>{student_name}</b>,</p>
+                    <p style="color:#374151;">
+                        Your result for <b>{exam_title}</b> has been evaluated.
+                    </p>
+ 
+                    <table width="100%"
+                           style="background:#f8fafc;border-radius:8px;
+                                  border:1px solid #e2e8f0;padding:16px;
+                                  margin:16px 0;">
+                        <tr>
+                            <td style="color:#374151;font-weight:bold;">
+                                Total Score:
+                            </td>
+                            <td style="color:#374151;text-align:right;">
+                                <b>{total_score}</b>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="color:#374151;font-weight:bold;">
+                                Percentage:
+                            </td>
+                            <td style="color:#374151;text-align:right;">
+                                <b>{pct}%</b>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="color:#374151;font-weight:bold;">
+                                Result:
+                            </td>
+                            <td style="text-align:right;">
+                                <b style="color:{result_color};">{result_word}</b>
+                            </td>
+                        </tr>
+                    </table>
+ 
+                    <p style="color:#6b7280;font-size:13px;">
+                        Detailed question-wise analysis is attached as a PDF report.
+                    </p>
+                    <p style="color:#374151;margin-top:20px;">
+                        <b>OEMS Examination Team</b>
+                    </p>
+                </td>
+            </tr>
+        </table>
+        </body></html>
+        """
+ 
+        msg.attach(MIMEText(html, 'html'))
+ 
+        # PDF attach karo
+        pdf_part = MIMEBase('application', 'octet-stream')
+        pdf_part.set_payload(pdf_bytes)
+        encoders.encode_base64(pdf_part)
+        safe_name = exam_title.replace(' ', '_')[:30]
+        pdf_part.add_header(
+            'Content-Disposition',
+            f'attachment; filename="OEMS_Result_{safe_name}.pdf"'
+        )
+        msg.attach(pdf_part)
+ 
+        with smtplib.SMTP(
+            EMAIL_CONFIG['SMTP_SERVER'],
+            EMAIL_CONFIG['SMTP_PORT']
+        ) as server:
+            server.starttls()
+            server.login(
+                EMAIL_CONFIG['SENDER_EMAIL'],
+                EMAIL_CONFIG['APP_PASSWORD']
+            )
+            server.sendmail(
+                EMAIL_CONFIG['SENDER_EMAIL'],
+                student_email,
+                msg.as_string()
+            )
+ 
+        print(f"[Email] Result sent to {student_email}")
+ 
+    except Exception as e:
+        print(f"[Email] Failed: {e}")
 
 
 # ---------------- HOME ----------------
@@ -814,96 +1425,117 @@ def start_exam(exam_id):
 @login_required("student")
 def submit_exam(exam_id):
     answers_data = request.form
-    student_id = session.get("student_id")
-
-    conn = get_db_connection()
+    student_id   = session.get("student_id")
+ 
+    conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-
-    cursor.execute("SELECT id FROM results WHERE student_id=%s AND exam_id=%s", (student_id, exam_id))
+ 
+    # Duplicate submission check
+    cursor.execute(
+        "SELECT id FROM results WHERE student_id=%s AND exam_id=%s",
+        (student_id, exam_id)
+    )
     if cursor.fetchone():
         cursor.close()
         conn.close()
-        return """
-        <div style="text-align:center; padding:50px; font-family:sans-serif;">
-            <h2 style="color:#dc3545;">You have already submitted this exam! 🚫</h2>
-            <a href="/student" style="text-decoration:none; color:#4f46e5;">Go to Dashboard</a>
-        </div>
-        """, 400
-
+        return render_template('already_submitted.html'), 400
+ 
     cursor.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,))
     questions = cursor.fetchall()
-
+ 
     total_score = 0
-    exam_status = "Evaluated"
-
+    has_theory  = False
+ 
     for q in questions:
-        if q["question_type"] == "mcq":
+        q_type = q["question_type"].lower()
+ 
+        if q_type == "mcq":
             student_answer = answers_data.get(f"q{q['id']}", "").strip()
             if student_answer == q["correct_answer"]:
-                score = q["marks"]
+                score    = q["marks"]
                 feedback = "Correct answer"
             else:
-                score = 0
-                feedback = "Incorrect or No answer"
+                score    = 0
+                feedback = "Incorrect or no answer"
             total_score += score
+ 
             cursor.execute("""
-                INSERT INTO answers (student_id, exam_id, question_id, answer, score, feedback)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (student_id, exam_id, q["id"], student_answer, score, feedback))
-
-        elif q["question_type"] == "msq":
+                INSERT INTO answers
+                (student_id, exam_id, question_id, answer, score, feedback)
+                VALUES (%s,%s,%s,%s,%s,%s)
+            """, (student_id, exam_id, q["id"],
+                  student_answer, score, feedback))
+ 
+        elif q_type == "msq":
             student_answers_list = answers_data.getlist(f"q{q['id']}")
             student_answers_list.sort()
             student_answer = ", ".join(student_answers_list)
-
-            if q["correct_answer"]:
-                db_correct_answers = [ans.strip() for ans in q["correct_answer"].split(",")]
-                db_correct_answers.sort()
-                db_correct_str = ", ".join(db_correct_answers)
-            else:
-                db_correct_str = ""
-
-            if student_answer == db_correct_str and len(student_answer) > 0:
-                score = q["marks"]
+ 
+            db_correct = sorted([
+                a.strip() for a in (q["correct_answer"] or "").split(",")
+                if a.strip()
+            ])
+            db_correct_str = ", ".join(db_correct)
+ 
+            if student_answer == db_correct_str and student_answer:
+                score    = q["marks"]
                 feedback = "Correct answers"
             else:
-                score = 0
-                feedback = "Incorrect or Partially Correct"
-
+                score    = 0
+                feedback = "Incorrect or partially correct"
             total_score += score
+ 
             cursor.execute("""
-                INSERT INTO answers (student_id, exam_id, question_id, answer, score, feedback)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (student_id, exam_id, q["id"], student_answer, score, feedback))
-
+                INSERT INTO answers
+                (student_id, exam_id, question_id, answer, score, feedback)
+                VALUES (%s,%s,%s,%s,%s,%s)
+            """, (student_id, exam_id, q["id"],
+                  student_answer, score, feedback))
+ 
         else:
+            # Theory — score NULL, background mein evaluate hoga
+            has_theory     = True
             student_answer = answers_data.get(f"q{q['id']}", "").strip()
-            score = None
-            feedback = "Pending Evaluation"
-            exam_status = "Pending"
             cursor.execute("""
-                INSERT INTO answers (student_id, exam_id, question_id, answer, score, feedback)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (student_id, exam_id, q["id"], student_answer, score, feedback))
-
+                INSERT INTO answers
+                (student_id, exam_id, question_id, answer, score, feedback)
+                VALUES (%s,%s,%s,%s,%s,%s)
+            """, (student_id, exam_id, q["id"],
+                  student_answer, None, "Pending AI evaluation"))
+ 
+    # ── Initial result save ──
+    # Theory hai toh Pending, warna Evaluated
+    initial_status = "Pending" if has_theory else "Evaluated"
+ 
     cursor.execute("""
-        INSERT INTO results (student_id, exam_id, total_score, submission_status)
+        INSERT INTO results
+        (student_id, exam_id, total_score, submission_status)
         VALUES (%s, %s, %s, %s)
-    """, (student_id, exam_id, round(total_score, 2), exam_status))
-
+    """, (student_id, exam_id, round(total_score, 2), initial_status))
+ 
     conn.commit()
     cursor.close()
     conn.close()
-
-    return f"""
-    <div style="text-align:center; padding:50px; font-family:Poppins, sans-serif;">
-        <h2 style="color:#22c55e;">Exam Submitted Successfully ✅</h2>
-        <p style="font-size:1.2rem; color:#555;">Your Objective Score: <b>{round(total_score, 2)}</b></p>
-        <p style="font-size:0.9rem; color:#888;">(Theory questions will be evaluated shortly)</p>
-        <hr style="width:200px; margin:20px auto;">
-        <a href="/student" style="text-decoration:none; color:#4f46e5; font-weight:bold;">Go to Dashboard</a>
-    </div>
-    """
+ 
+    # ── Background evaluation trigger ──
+    if has_theory:
+        # Flask app context background thread mein pass karo
+        app_ctx = app.app_context()
+        thread  = threading.Thread(
+            target=run_background_evaluation,
+            args=(student_id, exam_id, app_ctx),
+            daemon=True
+        )
+        thread.start()
+        print(f"[Submit] Background evaluation started for "
+              f"student {student_id}, exam {exam_id}")
+ 
+    # ── Success page ──
+    return render_template(
+        'exam_submitted.html',
+        has_theory=has_theory,
+        objective_score=round(total_score, 2)
+    )
 
 
 # ---------------- DELETE STUDENT ROUTE ----------------
@@ -921,124 +1553,103 @@ def delete_student(id):
     return redirect("/student_manager")
 
 
-# ---------------- AI EVALUATION HELPER ----------------
-def evaluate_answer(question, student_answer, max_marks):
-    """
-    Gemini 2.5 Flash se theory answer evaluate karo.
-    Returns: (score, feedback)
-    """
- 
-    # Bahut chota ya irrelevant answer — Gemini call bhi mat karo
-    if not student_answer or len(student_answer.strip()) < 20:
-        return 0, "Answer too short or not provided."
- 
-    word_count = len(student_answer.split())
-    if word_count < 5:
-        return 0, "Answer too short to evaluate."
- 
-    prompt = f"""You are a strict university exam evaluator.
- 
-Question: {question}
- 
-Student Answer: {student_answer}
- 
-Rules:
-1. If the answer is completely unrelated to the question, give Score: 0
-2. If the answer is random text, a name, or gibberish, give Score: 0
-3. If the answer is too short (less than 5 words), give Score: 0
-4. Award marks proportionally based on how correctly and completely the concept is explained.
-5. Score must be a number between 0 and {max_marks}. No decimals above 0.5 steps.
-6. Be strict but fair.
- 
-Respond in EXACTLY this format (nothing else):
-Score: <number>
-Feedback: <one sentence reason>"""
- 
-    try:
-        response = gemini_model.generate_content(prompt)
-        result   = response.text.strip()
- 
-        # Score parse karo
-        score_match    = re.search(r'Score:\s*(\d+(\.\d+)?)', result)
-        feedback_match = re.search(r'Feedback:\s*(.*)', result)
- 
-        score    = float(score_match.group(1))    if score_match    else 0
-        feedback = feedback_match.group(1).strip() if feedback_match else "Evaluated"
- 
-        # Score ko max_marks se cap karo — Gemini kabhi kabhi zyada de deta hai
-        score = min(score, float(max_marks))
-        score = max(score, 0)
- 
-    except Exception as e:
-        print(f"Gemini evaluation error: {e}")
-        score    = 0
-        feedback = "AI evaluation failed — please re-run."
- 
-    return score, feedback
-
-
 # ---------------- AI CHECKING ROUTE ----------------
-import time
- 
 @app.route("/run_ai_check")
 @login_required("admin")
 def run_ai_check():
- 
     conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
  
-    # Sirf theory questions jo evaluate nahi hue
+    # correct_answer bhi fetch karo — model answer ke liye
     cursor.execute("""
-        SELECT answers.id, answers.answer,
-               questions.question_text, questions.marks
+        SELECT
+            answers.id,
+            answers.answer,
+            answers.student_id,
+            answers.exam_id,
+            questions.question_text,
+            questions.marks,
+            questions.correct_answer
         FROM answers
         JOIN questions ON answers.question_id = questions.id
         WHERE answers.score IS NULL
-        AND questions.question_type = 'theory'
+          AND questions.question_type = 'theory'
     """)
     records = cursor.fetchall()
  
-    print(f"[Gemini] Total pending theory answers: {len(records)}")
+    print(f"[AI Check] Pending theory answers: {len(records)}")
  
-    evaluated = 0
-    failed    = 0
+    for r in records:
+        student_answer = (r["answer"] or "").strip()
  
-    for i, r in enumerate(records):
-        question       = r["question_text"]
-        student_answer = r["answer"]
-        max_marks      = r["marks"]
- 
-        # Khali answer — Gemini call mat karo
-        if not student_answer or len(student_answer.strip()) < 20:
+        if not student_answer or len(student_answer) < 10:
             cursor.execute(
                 "UPDATE answers SET score=%s, feedback=%s WHERE id=%s",
-                (0, "No answer submitted or answer too short.", r["id"])
+                (0, "No answer submitted or too short.", r["id"])
             )
-            evaluated += 1
             continue
  
-        score, feedback = evaluate_answer(question, student_answer, max_marks)
+        score, feedback = evaluate_answer(
+            r["question_text"],
+            student_answer,
+            r["marks"],
+            model_answer=r.get("correct_answer", "")  # model answer pass karo
+        )
  
-        print(f"[Gemini] Answer #{r['id']} → Score: {score}/{max_marks}")
+        print(f"[AI Check] Answer #{r['id']} → {score}/{r['marks']}")
  
         cursor.execute(
             "UPDATE answers SET score=%s, feedback=%s WHERE id=%s",
             (round(score, 1), feedback, r["id"])
         )
-        evaluated += 1
  
-        # ── Rate limiting: 10 RPM = max 10 requests/minute ──
-        # Har 10 requests ke baad 65 seconds wait karo
-        if (i + 1) % 10 == 0 and (i + 1) < len(records):
-            print(f"[Gemini] Rate limit pause — 65s wait ({i+1}/{len(records)} done)")
-            time.sleep(65)
+    conn.commit()
+ 
+    # FIX: results table bhi update karo — student wise
+    # Unique student+exam combinations dhundho
+    cursor.execute("""
+        SELECT DISTINCT answers.student_id, answers.exam_id
+        FROM answers
+        JOIN questions ON answers.question_id = questions.id
+        WHERE questions.question_type = 'theory'
+    """)
+    student_exams = cursor.fetchall()
+ 
+    for se in student_exams:
+        sid = se["student_id"]
+        eid = se["exam_id"]
+ 
+        # Total score recalculate karo
+        cursor.execute("""
+            SELECT COALESCE(SUM(score), 0) AS total
+            FROM answers
+            WHERE student_id = %s AND exam_id = %s
+        """, (sid, eid))
+        total = float(cursor.fetchone()["total"] or 0)
+ 
+        # Koi bhi score NULL bacha hai?
+        cursor.execute("""
+            SELECT COUNT(*) AS pending
+            FROM answers
+            WHERE student_id = %s AND exam_id = %s
+              AND score IS NULL
+        """, (sid, eid))
+        pending = cursor.fetchone()["pending"]
+ 
+        new_status = "Pending" if pending > 0 else "Evaluated"
+ 
+        cursor.execute("""
+            UPDATE results
+            SET total_score = %s, submission_status = %s
+            WHERE student_id = %s AND exam_id = %s
+        """, (round(total, 2), new_status, sid, eid))
  
     conn.commit()
     cursor.close()
     conn.close()
  
-    print(f"[Gemini] Evaluation complete — {evaluated} evaluated, {failed} failed")
-    return f"AI Evaluation Complete — {evaluated} answers evaluated."
+    print(f"[AI Check] Done — {len(records)} answers processed")
+    return f"AI Evaluation Complete — {len(records)} answers evaluated."
 
 
 # ---------------- PLAGIARISM DETECTION ROUTE ----------------

@@ -153,7 +153,7 @@
                     <th>ID</th>
                     <th>Name</th>
                     <th>Admission No</th>
-                    <th>Program (Branch)</th>
+                    <th>Program (branch)</th>
                     <th>Semester</th>
                     <th>Email</th>
                     <th>Action</th>
@@ -172,7 +172,7 @@
                         <td><span class="sname">{{ s.name }}</span></td>
                         <td style="font-family:monospace;">{{ s.admission_no }}</td>
                         <td>{{ s.program }} ({{ s.branch }})</td>
-                        <td>Sem {{ s.semester }}</td>
+                        <td>Sem ({{ s.semester }})</td>
                         <td>{% if s.email %}{{ s.email }}{% else %}<span class="no-email">Not set</span>{% endif %}</td>
                         <td>
                             <!-- FIX: POST form instead of GET link -->
