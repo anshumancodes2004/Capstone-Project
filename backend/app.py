@@ -178,7 +178,7 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
     ))
  
     # ── SECTION 1: Student Details ──
-    story.append(Paragraph("Section 1: Student Details", heading_style))
+    story.append(Paragraph("Student Details", heading_style))
  
     student_name  = str(student.get('name', 'N/A'))
     student_email = str(student.get('email', 'N/A') or 'Not provided')
@@ -186,6 +186,7 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
     exam_date     = str(exam.get('start_time', 'N/A'))
     admission_no  = str(student.get('admission_no', 'N/A'))
     program       = str(student.get('program', 'N/A'))
+    branch        = str(student.get('branch', 'N/A'))
     semester      = str(student.get('semester', 'N/A'))
  
     detail_data = [
@@ -193,9 +194,9 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
         ['Student Name',    student_name],
         ['Admission No',    admission_no],
         ['Email',           student_email],
-        ['Program',         f"{program} — Semester {semester}"],
-        ['Exam Name',       exam_title],
-        ['Exam Date',       exam_date],
+        ['Program (Branch) - Sem',         f"{program} ({branch}) — Semester ({semester})"],
+        ['Course Name',       exam_title],
+        ['Exam Date & Time',       exam_date],
         ['Report Generated', datetime.now().strftime('%d %b %Y, %I:%M %p')],
     ]
  
@@ -219,7 +220,7 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
     story.append(Spacer(1, 16))
  
     # ── SECTION 2: Question-wise Analysis ──
-    story.append(Paragraph("Section 2: Question-wise Analysis", heading_style))
+    story.append(Paragraph("Question-wise Analysis", heading_style))
  
     for idx, ans in enumerate(answers, 1):
         q_text       = str(ans.get('question_text', 'N/A'))
@@ -243,7 +244,7 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
                     textColor=colors.HexColor('#16a34a') if score > 0
                     else colors.HexColor('#dc2626'))
             )],
-            ['AI Feedback:', Paragraph(feedback, muted_style)],
+            ['Feedback:', Paragraph(feedback, muted_style)],
         ]
  
         q_table = Table(q_data, colWidths=[4*cm, 13*cm])
@@ -266,7 +267,7 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
     story.append(PageBreak())
  
     # ── SECTION 3: Summary ──
-    story.append(Paragraph("Section 3: Performance Summary", heading_style))
+    story.append(Paragraph("Performance Summary", heading_style))
  
     total_q     = len(answers)
     attempted   = sum(1 for a in answers
@@ -312,7 +313,7 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
     story.append(Spacer(1, 16))
  
     # ── SECTION 4: AI Overall Feedback ──
-    story.append(Paragraph("Section 4: AI Performance Feedback", heading_style))
+    story.append(Paragraph("Performance Feedback", heading_style))
  
     if pct >= 75:
         overall_fb = (f"Excellent performance! The student demonstrated strong understanding "
@@ -591,9 +592,9 @@ def send_result_email(student, exam, total_score, percentage, pdf_bytes):
         exam_title    = exam.get('title', 'Exam')
  
         msg = MIMEMultipart('mixed')
-        msg['From']    = formataddr(('OEMS Examination', EMAIL_CONFIG['SENDER_EMAIL']))
+        msg['From']    = formataddr(('OEMS Examination Control', EMAIL_CONFIG['SENDER_EMAIL']))
         msg['To']      = student_email
-        msg['Subject'] = f"Your Result: {exam_title} — OEMS"
+        msg['Subject'] = f"Exam Result: {exam_title}"
  
         pct = round(percentage, 1)
         if pct >= 35:
@@ -611,7 +612,7 @@ def send_result_email(student, exam, total_score, percentage, pdf_bytes):
             <tr>
                 <td style="background:#4f46e5;padding:20px;text-align:center;">
                     <h2 style="margin:0;color:#fff;font-size:20px;">
-                        Exam Result — OEMS
+                        Exam Result Published
                     </h2>
                 </td>
             </tr>
@@ -919,22 +920,29 @@ def edit_profile():
     return render_template("edit_profile.html", user=user)
 
 
-# ---------------- RESET AI EVALUATION ROUTE ----------------
-@app.route("/reset_ai_evaluation")
-@login_required("admin")
-def reset_ai_evaluation():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-    UPDATE answers
-    JOIN questions ON answers.question_id = questions.id
-    SET answers.score = NULL, answers.feedback = NULL
-    WHERE questions.question_type = 'theory'
-    """)
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return "AI Evaluation Reset Successfully"
+# ---------------- RESET EVALUATION ROUTE ----------------
+# @app.route("/reset_ai_evaluation/<int:exam_id>")
+# @login_required("admin")
+# def reset_ai_evaluation(exam_id):
+#     conn = get_db_connection()
+#     cursor = conn.cursor()
+#     cursor.execute("""
+#         UPDATE answers
+#         JOIN questions ON answers.question_id = questions.id
+#         SET answers.score = NULL, answers.feedback = NULL
+#         WHERE questions.question_type = 'theory' AND answers.exam_id = %s
+#     """, (exam_id,))
+
+#     cursor.execute("""
+#         UPDATE results
+#         SET submission_status = 'submitted', total_score = 0.00
+#         WHERE exam_id = %s
+#     """, (exam_id,))
+
+#     conn.commit()
+#     cursor.close()
+#     conn.close()
+#     return "AI Evaluation Reset Successfully"
 
 
 # ---------------- CREATE EXAM ROUTE ----------------
@@ -981,44 +989,78 @@ def add_question(exam_id):
 
     cursor.execute("SELECT * FROM exams WHERE id=%s", (exam_id,))
     exam = cursor.fetchone()
+
     cursor.execute("SELECT COUNT(*) as total FROM questions WHERE exam_id=%s", (exam_id,))
     question_count = cursor.fetchone()["total"]
+
     max_limit = 20 if exam["exam_type"] == "theory" else 50
 
     if request.method == "POST":
+
         if question_count >= max_limit:
             cursor.close()
             conn.close()
             return "Maximum question limit reached ❌"
 
-        question_text = request.form["question_text"]
-        marks = request.form["marks"]
-        question_type = request.form.get("question_type")
+        question_text = request.form.get("question_text")
+        marks = int(request.form.get("marks", 0))
+        question_type = request.form.get("question_type", "theory").lower()
+
         optionA = request.form.get("optionA")
         optionB = request.form.get("optionB")
         optionC = request.form.get("optionC")
         optionD = request.form.get("optionD")
-        correct_answers_list = request.form.getlist("correct_answer")
 
-        if correct_answers_list:
-            correct_answers_list.sort()
-            correct_answer = ", ".join(correct_answers_list)
+        # 🔥 FIXED LOGIC
+        if question_type == "theory":
+            correct_answer = request.form.get("correct_answer", "").strip()
+
+            if not correct_answer:
+                cursor.close()
+                conn.close()
+                return "Provide answer outline for theory ❌"
+
         else:
-            correct_answer = request.form.get("correct_answer", "")
+            selected = request.form.getlist("correct_answer")
+
+            if not selected:
+                cursor.close()
+                conn.close()
+                return "Select at least one correct answer ❌"
+
+            correct_answer = ",".join(sorted(selected))
 
         cursor.execute("""
             INSERT INTO questions
             (exam_id, question_text, question_type, optionA, optionB, optionC, optionD, correct_answer, marks)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        """, (exam_id, question_text, question_type, optionA, optionB, optionC, optionD, correct_answer, marks))
+        """, (
+            exam_id,
+            question_text,
+            question_type,
+            optionA,
+            optionB,
+            optionC,
+            optionD,
+            correct_answer,
+            marks
+        ))
+
         conn.commit()
         cursor.close()
         conn.close()
+
         return redirect(f"/add_question/{exam_id}")
 
     cursor.close()
     conn.close()
-    return render_template("add_question.html", exam=exam, question_count=question_count, max_limit=max_limit)
+
+    return render_template(
+        "add_question.html",
+        exam=exam,
+        question_count=question_count,
+        max_limit=max_limit
+    )
 
 
 # ============================================================
@@ -1039,22 +1081,33 @@ def edit_question(question_id):
         conn.close()
         return "Question not found", 404
 
+    # ================= POST =================
     if request.method == "POST":
+
         question_text = request.form.get("question_text")
         optionA = request.form.get("optionA")
         optionB = request.form.get("optionB")
         optionC = request.form.get("optionC")
         optionD = request.form.get("optionD")
-        marks = request.form.get("marks")
 
-        # AUTO DETECT TYPE
+        # ✅ SAFE marks conversion
+        try:
+            marks = int(request.form.get("marks", 0))
+        except:
+            marks = 0
+
+        # ✅ AUTO DETECT TYPE
         is_mcq = optionA or optionB or optionC or optionD
 
         if is_mcq:
             selected_options = request.form.getlist("correct_answer")
             correct_answer = ",".join(selected_options) if selected_options else ""
         else:
+            # THEORY
             correct_answer = request.form.get("correct_answer", "")
+
+        # ❌ REMOVE THIS (ye hi crash ka reason hai)
+        # if not correct_answer:
 
         cursor.execute("""
             UPDATE questions
@@ -1085,6 +1138,7 @@ def edit_question(question_id):
 
         return redirect(f"/questions/{exam_id}")
 
+    # ================= GET =================
     cursor.close()
     conn.close()
 
@@ -1553,103 +1607,103 @@ def delete_student(id):
     return redirect("/student_manager")
 
 
-# ---------------- AI CHECKING ROUTE ----------------
-@app.route("/run_ai_check")
-@login_required("admin")
-def run_ai_check():
-    conn   = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+# ---------------- RUN EVALUATION ROUTE ----------------
+# @app.route("/run_ai_check")
+# @login_required("admin")
+# def run_ai_check():
+#     conn   = get_db_connection()
+#     cursor = conn.cursor(dictionary=True)
  
-    # correct_answer bhi fetch karo — model answer ke liye
-    cursor.execute("""
-        SELECT
-            answers.id,
-            answers.answer,
-            answers.student_id,
-            answers.exam_id,
-            questions.question_text,
-            questions.marks,
-            questions.correct_answer
-        FROM answers
-        JOIN questions ON answers.question_id = questions.id
-        WHERE answers.score IS NULL
-          AND questions.question_type = 'theory'
-    """)
-    records = cursor.fetchall()
+#     # correct_answer bhi fetch karo — model answer ke liye
+#     cursor.execute("""
+#         SELECT
+#             answers.id,
+#             answers.answer,
+#             answers.student_id,
+#             answers.exam_id,
+#             questions.question_text,
+#             questions.marks,
+#             questions.correct_answer
+#         FROM answers
+#         JOIN questions ON answers.question_id = questions.id
+#         WHERE answers.score IS NULL
+#           AND questions.question_type = 'theory'
+#     """)
+#     records = cursor.fetchall()
  
-    print(f"[AI Check] Pending theory answers: {len(records)}")
+#     print(f"[AI Check] Pending theory answers: {len(records)}")
  
-    for r in records:
-        student_answer = (r["answer"] or "").strip()
+#     for r in records:
+#         student_answer = (r["answer"] or "").strip()
  
-        if not student_answer or len(student_answer) < 10:
-            cursor.execute(
-                "UPDATE answers SET score=%s, feedback=%s WHERE id=%s",
-                (0, "No answer submitted or too short.", r["id"])
-            )
-            continue
+#         if not student_answer or len(student_answer) < 10:
+#             cursor.execute(
+#                 "UPDATE answers SET score=%s, feedback=%s WHERE id=%s",
+#                 (0, "No answer submitted or too short.", r["id"])
+#             )
+#             continue
  
-        score, feedback = evaluate_answer(
-            r["question_text"],
-            student_answer,
-            r["marks"],
-            model_answer=r.get("correct_answer", "")  # model answer pass karo
-        )
+#         score, feedback = evaluate_answer(
+#             r["question_text"],
+#             student_answer,
+#             r["marks"],
+#             model_answer=r.get("correct_answer", "")  # model answer pass karo
+#         )
  
-        print(f"[AI Check] Answer #{r['id']} → {score}/{r['marks']}")
+#         print(f"[AI Check] Answer #{r['id']} → {score}/{r['marks']}")
  
-        cursor.execute(
-            "UPDATE answers SET score=%s, feedback=%s WHERE id=%s",
-            (round(score, 1), feedback, r["id"])
-        )
+#         cursor.execute(
+#             "UPDATE answers SET score=%s, feedback=%s WHERE id=%s",
+#             (round(score, 1), feedback, r["id"])
+#         )
  
-    conn.commit()
+#     conn.commit()
  
-    # FIX: results table bhi update karo — student wise
-    # Unique student+exam combinations dhundho
-    cursor.execute("""
-        SELECT DISTINCT answers.student_id, answers.exam_id
-        FROM answers
-        JOIN questions ON answers.question_id = questions.id
-        WHERE questions.question_type = 'theory'
-    """)
-    student_exams = cursor.fetchall()
+#     # FIX: results table bhi update karo — student wise
+#     # Unique student+exam combinations dhundho
+#     cursor.execute("""
+#         SELECT DISTINCT answers.student_id, answers.exam_id
+#         FROM answers
+#         JOIN questions ON answers.question_id = questions.id
+#         WHERE questions.question_type = 'theory'
+#     """)
+#     student_exams = cursor.fetchall()
  
-    for se in student_exams:
-        sid = se["student_id"]
-        eid = se["exam_id"]
+#     for se in student_exams:
+#         sid = se["student_id"]
+#         eid = se["exam_id"]
  
-        # Total score recalculate karo
-        cursor.execute("""
-            SELECT COALESCE(SUM(score), 0) AS total
-            FROM answers
-            WHERE student_id = %s AND exam_id = %s
-        """, (sid, eid))
-        total = float(cursor.fetchone()["total"] or 0)
+#         # Total score recalculate karo
+#         cursor.execute("""
+#             SELECT COALESCE(SUM(score), 0) AS total
+#             FROM answers
+#             WHERE student_id = %s AND exam_id = %s
+#         """, (sid, eid))
+#         total = float(cursor.fetchone()["total"] or 0)
  
-        # Koi bhi score NULL bacha hai?
-        cursor.execute("""
-            SELECT COUNT(*) AS pending
-            FROM answers
-            WHERE student_id = %s AND exam_id = %s
-              AND score IS NULL
-        """, (sid, eid))
-        pending = cursor.fetchone()["pending"]
+#         # Koi bhi score NULL bacha hai?
+#         cursor.execute("""
+#             SELECT COUNT(*) AS pending
+#             FROM answers
+#             WHERE student_id = %s AND exam_id = %s
+#               AND score IS NULL
+#         """, (sid, eid))
+#         pending = cursor.fetchone()["pending"]
  
-        new_status = "Pending" if pending > 0 else "Evaluated"
+#         new_status = "Pending" if pending > 0 else "Evaluated"
  
-        cursor.execute("""
-            UPDATE results
-            SET total_score = %s, submission_status = %s
-            WHERE student_id = %s AND exam_id = %s
-        """, (round(total, 2), new_status, sid, eid))
+#         cursor.execute("""
+#             UPDATE results
+#             SET total_score = %s, submission_status = %s
+#             WHERE student_id = %s AND exam_id = %s
+#         """, (round(total, 2), new_status, sid, eid))
  
-    conn.commit()
-    cursor.close()
-    conn.close()
+#     conn.commit()
+#     cursor.close()
+#     conn.close()
  
-    print(f"[AI Check] Done — {len(records)} answers processed")
-    return f"AI Evaluation Complete — {len(records)} answers evaluated."
+#     print(f"[AI Check] Done — {len(records)} answers processed")
+#     return f"AI Evaluation Complete — {len(records)} answers evaluated."
 
 
 # ---------------- PLAGIARISM DETECTION ROUTE ----------------
@@ -2156,6 +2210,58 @@ def bulk_exam_alerts():
 def logout():
     session.clear()
     return redirect("/")
+
+@app.route('/test_email/<int:student_id>/<int:exam_id>')
+def test_email(student_id, exam_id):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        
+        # 1. Fetch Student & Exam
+        cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
+        student = cursor.fetchone()
+        
+        cursor.execute("SELECT * FROM exams WHERE id = %s", (exam_id,))
+        exam = cursor.fetchone()
+        
+        # 2. Fetch Answers
+        cursor.execute("""
+            SELECT q.question_text, q.marks, q.question_type,
+                   a.answer AS student_answer, a.score, a.feedback
+            FROM answers a
+            JOIN questions q ON a.question_id = q.id
+            WHERE a.student_id = %s AND a.exam_id = %s
+            ORDER BY q.id
+        """, (student_id, exam_id))
+        all_answers = cursor.fetchall()
+        
+        # 3. Fetch Total Score
+        cursor.execute("SELECT total_score FROM results WHERE student_id = %s AND exam_id = %s", (student_id, exam_id))
+        res = cursor.fetchone()
+        total_score = float(res['total_score']) if res else 0.0
+        
+        cursor.close()
+        conn.close()
+
+        # Handle None values for PDF
+        for ans in all_answers:
+            if ans['score'] is None: ans['score'] = 0
+            if not ans['feedback']: ans['feedback'] = 'Evaluated'
+            if not ans['student_answer']: ans['student_answer'] = ''
+
+        # 4. Calculate Percentage
+        max_marks = sum(a['marks'] for a in all_answers)
+        percentage = (total_score / max_marks * 100) if max_marks > 0 else 0
+
+        # 5. Generate New PDF & Send Email
+        pdf_bytes = generate_result_pdf(student, exam, all_answers, total_score, percentage)
+        send_result_email(student, exam, total_score, percentage, pdf_bytes)
+        
+        return f"<h1>✅ Email successfully sent to {student['email']}!</h1><p>Check your inbox to see the new PDF design.</p>"
+
+    except Exception as e:
+        return f"<h1>❌ Error:</h1><p>{str(e)}</p>"
+
 
 
 # ---------------- RUN APP ----------------

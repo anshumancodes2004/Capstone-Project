@@ -174,16 +174,16 @@
     </div>
 
     <!-- AI Tools — FIX: confirmation + progress bar -->
-    <div class="ai-section">
-        <button class="ai-btn ai-eval" onclick="runAICheck()">Run AI Evaluation</button>
-        <button class="ai-btn ai-reset" onclick="resetAICheck()">Reset AI Evaluation</button>
-    </div>
+    <!-- <div class="ai-section">
+        <button class="ai-btn ai-eval" onclick="runAICheck()">Run Evaluation</button>
+        <button class="ai-btn ai-reset" onclick="resetAICheck()">Reset Evaluation</button>
+    </div> -->
 
     <!-- AI Progress Indicator -->
-    <div id="aiProgress">
+    <!-- <div id="aiProgress">
         <div class="prog-label">🤖 AI evaluation in progress — please wait, do not close this page...</div>
         <div class="prog-track"><div class="prog-fill"></div></div>
-    </div>
+    </div> -->
 
     <!-- Exam Table -->
     <div class="table-wrapper">
@@ -315,7 +315,7 @@
                 showToast('AI scores reset successfully.', 'success');
                 setTimeout(() => location.reload(), 1500);
             })
-            .catch(() => showToast('❌ Reset failed.', 'error'));
+            .catch(() => showToast('Reset failed.', 'error'));
     }
 
     // FIX: Delete exam — confirmation with exam name

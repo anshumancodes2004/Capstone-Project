@@ -388,7 +388,11 @@
                     </div>
 
                     {% else %}
-                        {# Theory question — no options, no correct_answer field needed #}
+                    <div class="form-group full-width">
+                        <label class="form-label">Correct Answer Outline</label>
+                        <textarea name="correct_answer" class="form-control" rows="4"
+                            placeholder="Enter reference answer for evaluation...">{{ question.correct_answer or '' }}</textarea>
+                    </div>
                     {% endif %}
                     
                     <div class="form-group full-width">

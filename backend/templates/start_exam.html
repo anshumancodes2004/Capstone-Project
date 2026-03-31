@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <!-- FIX: CSP header — inline scripts restrict, external resources block -->
     <meta http-equiv="Content-Security-Policy" content="
         default-src 'self';
         script-src 'self' 'unsafe-inline';
@@ -201,7 +200,7 @@
             position: fixed; inset: 0;
             background: rgba(0,0,0,0.97);
             display: none; flex-direction: column;
-            justify-content: center; align-items: center;
+            justify-content: center align-items: center;
             z-index: 100000; text-align: center; padding: 40px;
         }
 
@@ -517,16 +516,13 @@
 </head>
 <body>
 
-<!-- Watermark — session ID se set hoga JS mein -->
 <div class="watermark" id="watermark">SECURE</div>
 
-<!-- Security Alert Toast -->
 <div id="alertToast" class="alert-toast">
     <span id="alertIcon">⚠️</span>
     <span id="alertText">Security Warning</span>
 </div>
 
-<!-- Termination Overlay -->
 <div id="terminationOverlay">
     <div class="term-icon">🚫</div>
     <div class="term-title">EXAM TERMINATED</div>
@@ -534,7 +530,6 @@
     <div class="term-sid" id="termSid">Session: ---</div>
 </div>
 
-<!-- Top Header -->
 <header class="header">
     <div class="header-left">
         <div class="live-badge"><div class="live-dot"></div>LIVE</div>
@@ -548,7 +543,6 @@
     <div class="viol-chip" id="violChip">0 / 5 violations</div>
 </header>
 
-<!-- Gatekeeper -->
 <div id="gatekeeper">
     <div class="gate-card">
         <div class="gate-icon">🛡️</div>
@@ -573,7 +567,6 @@
     </div>
 </div>
 
-<!-- Proctor Panel -->
 <div class="proctor-panel" id="proctorPanel" style="display:none;">
     <div class="panel-header">
         <div class="live-dot"></div>
@@ -601,7 +594,6 @@
     </div>
 </div>
 
-<!-- Exam Container -->
 <div class="exam-wrap" id="examWrap" style="display:none;">
     <form id="examForm" method="POST" action="{{ url_for('submit_exam', exam_id=exam_id) }}">
 
@@ -649,7 +641,6 @@
     </form>
 </div>
 
-<!-- Progress Bar -->
 <div class="progress-bar-wrap">
     <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
 </div>
@@ -1008,13 +999,21 @@ class FortressExam {
             }
         }, true);
 
-        // 4. RIGHT CLICK BLOCK
-        document.addEventListener('contextmenu', e => e.preventDefault());
+        // ==============================================================
+        // TODO: UNCOMMENT FOR PRODUCTION (START) - COPY/PASTE/RIGHT-CLICK
+        // ==============================================================
+        
+        // // 4. RIGHT CLICK BLOCK
+        // document.addEventListener('contextmenu', e => e.preventDefault());
 
-        // 5. COPY/PASTE BLOCK — everywhere, textarea bhi included
-        document.addEventListener('copy',  e => e.preventDefault());
-        document.addEventListener('cut',   e => e.preventDefault());
-        document.addEventListener('paste', e => e.preventDefault());
+        // // 5. COPY/PASTE BLOCK — everywhere, textarea bhi included
+        // document.addEventListener('copy',  e => e.preventDefault());
+        // document.addEventListener('cut',   e => e.preventDefault());
+        // document.addEventListener('paste', e => e.preventDefault());
+        
+        // ==============================================================
+        // TODO: UNCOMMENT FOR PRODUCTION (END)
+        // ==============================================================
 
         // 6. PRINT BLOCK
         window.addEventListener('beforeprint', e => {
