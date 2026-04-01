@@ -2203,6 +2203,89 @@ def bulk_exam_alerts():
     except Exception as e:
         logger.error(f"Error in bulk_exam_alerts: {str(e)}")
         return jsonify({"success": False, "message": "Internal server error"}), 500
+    
+
+# ============================================================
+# STUDENT RESULT PAGE ROUTE 
+# ============================================================
+@app.route("/my_result/<int:exam_id>")
+@login_required("student")
+def student_result(exam_id):
+    student_id = session.get("student_id")
+ 
+    conn   = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+ 
+    # Result check karo
+    cursor.execute("""
+        SELECT * FROM results
+        WHERE student_id = %s AND exam_id = %s
+    """, (student_id, exam_id))
+    result = cursor.fetchone()
+ 
+    if not result:
+        cursor.close()
+        conn.close()
+        return "<script>alert('Result not found.'); window.location.href='/student';</script>"
+ 
+    # Student info
+    cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
+    student = cursor.fetchone()
+ 
+    # Exam info
+    cursor.execute("SELECT * FROM exams WHERE id = %s", (exam_id,))
+    exam = cursor.fetchone()
+ 
+    # Answers with question details
+    cursor.execute("""
+        SELECT
+            q.question_text,
+            q.marks,
+            q.question_type,
+            a.answer     AS student_answer,
+            a.score,
+            a.feedback
+        FROM answers a
+        JOIN questions q ON a.question_id = q.id
+        WHERE a.student_id = %s AND a.exam_id = %s
+        ORDER BY q.id
+    """, (student_id, exam_id))
+    answers = cursor.fetchall()
+ 
+    cursor.close()
+    conn.close()
+ 
+    # Calculations
+    max_marks     = sum(a['marks'] for a in answers)
+    total_score   = result['total_score'] or 0
+    percentage    = round((total_score / max_marks * 100), 1) if max_marks > 0 else 0
+    total_q       = len(answers)
+    attempted     = sum(1 for a in answers
+                        if str(a.get('student_answer') or '').strip())
+    not_attempted = total_q - attempted
+ 
+    # Grade
+    if percentage >= 90:   grade = 'O'
+    elif percentage >= 75: grade = 'A'
+    elif percentage >= 60: grade = 'B'
+    elif percentage >= 45: grade = 'C'
+    elif percentage >= 35: grade = 'D'
+    else:                  grade = 'F'
+ 
+    return render_template(
+        'student_result.html',
+        student=student,
+        exam=exam,
+        answers=answers,
+        total_score=total_score,
+        max_marks=max_marks,
+        percentage=percentage,
+        grade=grade,
+        total_questions=total_q,
+        attempted=attempted,
+        not_attempted=not_attempted,
+        submission_status=result['submission_status']
+    )
 
 
 # ---------------- LOGOUT ----------------
@@ -2211,6 +2294,8 @@ def logout():
     session.clear()
     return redirect("/")
 
+
+# ---------------- EMAIL RESENDER FOR TESTING ----------------
 @app.route('/test_email/<int:student_id>/<int:exam_id>')
 def test_email(student_id, exam_id):
     try:

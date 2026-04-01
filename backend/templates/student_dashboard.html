@@ -121,7 +121,7 @@
         <div class="split-line"></div>
     </div>
 
-    <!-- Student Info — FIX: student object use karo, session nahi -->
+    <!-- Student Info -->
     <div class="info-card">
         <div class="info-avatar">🎓</div>
         <div class="info-details">
@@ -162,7 +162,6 @@
                         <td><span class="soft-badge badge-type">{{ exam.exam_type }}</span></td>
                         <td style="font-weight:500;">{{ exam.total_marks }} Marks</td>
 
-                        <!-- FIX: Date bhi dikhao, sirf time nahi -->
                         <td>
                             <div style="color:#2c3e50;font-weight:500;">
                                 {{ exam.start_time.strftime("%d %b %Y, %I:%M %p") }}
@@ -197,7 +196,10 @@
                             {% set exam_end = exam.start_time + timedelta(minutes=exam.duration) %}
 
                             {% if exam.id in attempted_exam_ids %}
-                                <span class="start-btn attempted">Submitted ✓</span>
+                            <a href="/my_result/{{ exam.id }}" class="start-btn"
+                                style="background:linear-gradient(45deg,#7c3aed,#a78bfa);">
+                                View Result
+                            </a>
 
                             {% elif exam.start_time > now_time %}
                                 <span class="start-btn disabled">Not Started</span>

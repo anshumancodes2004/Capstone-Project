@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OEMS · My Result</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; font-family:'Poppins',sans-serif; }
+        body { background:#f4f7f6; min-height:100vh; padding:2rem;
+               background-image: radial-gradient(circle at top right,#eef2f3,transparent 40%),
+                                 radial-gradient(circle at bottom left,#e0eafc,transparent 40%); }
+        .container { max-width:900px; margin:0 auto; animation:fadeIn 0.8s ease-in-out; }
+
+        /* Header */
+        .header-section { margin-bottom:2rem; }
+        .header-content { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; }
+        .header-title { font-size:2rem; font-weight:600; color:#2c3e50; text-transform:uppercase; letter-spacing:2px; }
+        .back-btn { display:inline-block; color:#555; text-decoration:none; font-size:0.9rem; border:1px solid #ccc; padding:9px 22px; border-radius:25px; transition:0.3s; background:white; font-weight:500; }
+        .back-btn:hover { background:#f0f0f0; color:#111; }
+        .split-line { width:100%; height:2px; background:linear-gradient(90deg,transparent,#007bff,#00c6ff,#007bff,transparent); animation:glowingLine 2s infinite alternate; }
+
+        /* Score Hero Card */
+        .score-hero { background:white; border-radius:18px; padding:2rem; margin-bottom:1.5rem; display:flex; gap:2rem; align-items:center; box-shadow:0 4px 20px rgba(31,38,135,0.07); border:1px solid rgba(0,0,0,0.05); }
+        .score-circle { width:120px; height:120px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; flex-shrink:0; border:5px solid #e9ecef; }
+        .score-circle.pass { border-color:#22c55e; background:#f0fdf4; }
+        .score-circle.fail { border-color:#ef4444; background:#fef2f2; }
+        .score-big { font-size:1.8rem; font-weight:700; line-height:1; }
+        .score-big.pass { color:#16a34a; }
+        .score-big.fail { color:#dc2626; }
+        .score-sub { font-size:0.75rem; color:#6c757d; margin-top:2px; }
+        .score-details h2 { font-size:1.4rem; font-weight:600; color:#2c3e50; margin-bottom:6px; }
+        .score-details p { color:#6c757d; font-size:0.9rem; margin-bottom:4px; }
+        .result-pill { display:inline-block; padding:4px 16px; border-radius:20px; font-size:0.85rem; font-weight:600; margin-top:6px; }
+        .result-pill.pass { background:#e8f5e9; color:#2e7d32; border:1px solid #c8e6c9; }
+        .result-pill.fail { background:#ffebee; color:#c62828; border:1px solid #ffcdd2; }
+
+        /* Stats Strip */
+        .stats-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+        .stat-pill { background:white; border-radius:12px; padding:1rem; text-align:center; box-shadow:0 2px 10px rgba(31,38,135,0.05); border:1px solid rgba(0,0,0,0.04); }
+        .stat-val { font-size:1.6rem; font-weight:600; color:#2c3e50; }
+        .stat-lbl { font-size:0.75rem; color:#6c757d; font-weight:500; margin-top:2px; }
+
+        /* Pending banner */
+        .pending-banner { background:#fff8e1; border:1px solid #ffe082; border-left:4px solid #f59e0b; border-radius:12px; padding:1rem 1.2rem; margin-bottom:1.5rem; display:flex; align-items:center; gap:12px; }
+        .pending-banner-text { font-size:0.9rem; color:#92400e; }
+
+        /* Question cards */
+        .section-title { font-size:1rem; font-weight:600; color:#2c3e50; margin-bottom:1rem; }
+        .q-card { background:white; border-radius:12px; padding:1.2rem 1.4rem; margin-bottom:10px; border:1px solid rgba(0,0,0,0.05); box-shadow:0 2px 10px rgba(31,38,135,0.04); }
+        .q-card.correct { border-left:4px solid #22c55e; border-radius:0 12px 12px 0; }
+        .q-card.wrong   { border-left:4px solid #ef4444; border-radius:0 12px 12px 0; }
+        .q-card.partial { border-left:4px solid #f59e0b; border-radius:0 12px 12px 0; }
+        .q-card.pending { border-left:4px solid #94a3b8; border-radius:0 12px 12px 0; }
+        .q-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; }
+        .q-num { font-size:0.75rem; font-weight:600; color:#6c757d; background:#f1f5f9; padding:3px 10px; border-radius:20px; }
+        .q-score-badge { font-size:0.82rem; font-weight:700; padding:3px 12px; border-radius:20px; }
+        .score-full    { background:#e8f5e9; color:#2e7d32; }
+        .score-partial { background:#fff3e0; color:#e65100; }
+        .score-zero    { background:#ffebee; color:#c62828; }
+        .score-pend    { background:#f1f5f9; color:#475569; }
+        .q-text { font-size:0.95rem; font-weight:500; color:#2c3e50; margin-bottom:10px; line-height:1.5; }
+        .q-answer-wrap { background:#f8fafc; border-radius:8px; padding:10px 14px; margin-bottom:8px; border:1px solid #e2e8f0; }
+        .q-answer-lbl { font-size:0.75rem; font-weight:600; color:#6c757d; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; }
+        .q-answer-text { font-size:0.88rem; color:#374151; line-height:1.6; }
+        .q-feedback { font-size:0.82rem; color:#6c757d; font-style:italic; margin-top:4px; }
+
+        @keyframes fadeIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes glowingLine { from{opacity:0.6} to{opacity:1;box-shadow:0 0 12px rgba(0,198,255,0.6)} }
+        @media(max-width:600px) {
+            .score-hero { flex-direction:column; text-align:center; }
+            .header-content { flex-direction:column; align-items:flex-start; gap:1rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <div class="header-section">
+        <div class="header-content">
+            <h1 class="header-title">My Result</h1>
+            <a href="/student" class="back-btn">← Back to Dashboard</a>
+        </div>
+        <div class="split-line"></div>
+    </div>
+
+    <!-- Score Hero -->
+    <div class="score-hero">
+        <div class="score-circle {{ 'pass' if percentage >= 35 else 'fail' }}">
+            <span class="score-big {{ 'pass' if percentage >= 35 else 'fail' }}">
+                {{ percentage|round(1) }}%
+            </span>
+            <span class="score-sub">{{ grade }}</span>
+        </div>
+        <div class="score-details">
+            <h2>{{ exam.title }}</h2>
+            <p>📅 {{ exam.start_time.strftime('%d %b %Y, %I:%M %p') if exam.start_time else '—' }}</p>
+            <p>🎓 {{ student.name }} · {{ student.admission_no }}</p>
+            <p>Total Score: <strong>{{ total_score }} / {{ max_marks }}</strong></p>
+            <span class="result-pill {{ 'pass' if percentage >= 35 else 'fail' }}">
+                {{ 'PASS' if percentage >= 35 else 'FAIL' }}
+            </span>
+        </div>
+    </div>
+
+    <!-- Pending banner -->
+    {% if submission_status == 'Pending' %}
+    <div class="pending-banner">
+        <span style="font-size:1.5rem;">⏳</span>
+        <div class="pending-banner-text">
+            <strong>Theory answers are being evaluated.</strong>
+            Your final score will be updated shortly and sent to your email.
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Stats Strip -->
+    <div class="stats-strip">
+        <div class="stat-pill">
+            <div class="stat-val">{{ total_questions }}</div>
+            <div class="stat-lbl">Total Questions</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-val">{{ attempted }}</div>
+            <div class="stat-lbl">Attempted</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-val">{{ not_attempted }}</div>
+            <div class="stat-lbl">Not Attempted</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-val" style="color:#16a34a;">{{ total_score }}</div>
+            <div class="stat-lbl">Score Obtained</div>
+        </div>
+    </div>
+
+    <!-- Question-wise Breakdown -->
+    <div class="section-title">📋 Question-wise Breakdown</div>
+
+    {% for a in answers %}
+    {% set score = a.score if a.score is not none else 0 %}
+    {% set is_pending = a.score is none %}
+    {% if is_pending %}
+        {% set card_class = 'pending' %}
+        {% set badge_class = 'score-pend' %}
+        {% set badge_text = 'Pending' %}
+    {% elif score >= a.marks %}
+        {% set card_class = 'correct' %}
+        {% set badge_class = 'score-full' %}
+        {% set badge_text = score|string + ' / ' + a.marks|string %}
+    {% elif score > 0 %}
+        {% set card_class = 'partial' %}
+        {% set badge_class = 'score-partial' %}
+        {% set badge_text = score|string + ' / ' + a.marks|string %}
+    {% else %}
+        {% set card_class = 'wrong' %}
+        {% set badge_class = 'score-zero' %}
+        {% set badge_text = '0 / ' + a.marks|string %}
+    {% endif %}
+
+    <div class="q-card {{ card_class }}">
+        <div class="q-top">
+            <span class="q-num">Q{{ loop.index }}</span>
+            <span class="q-score-badge {{ badge_class }}">{{ badge_text }}</span>
+        </div>
+        <p class="q-text">{{ a.question_text }}</p>
+        <div class="q-answer-wrap">
+            <div class="q-answer-lbl">Your Answer</div>
+            <div class="q-answer-text">
+                {% if a.student_answer and a.student_answer.strip() %}
+                    {{ a.student_answer }}
+                {% else %}
+                    <span style="color:#adb5bd;font-style:italic;">Not answered</span>
+                {% endif %}
+            </div>
+        </div>
+        {% if a.feedback and a.feedback != 'Pending AI evaluation' %}
+        <div class="q-feedback">💬 {{ a.feedback }}</div>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+</div>
+</body>
+</html>
