@@ -109,10 +109,10 @@
             <h2 class="info-name">{{ user.name }}</h2>
             <div class="info-badges">
                 <span class="badge highlight">Admission No: {{ user.admission_no }}</span>
-                <span class="badge">Program (branch): {{ user.program }} ({{ user.branch }})</span>
+                <span class="badge">Program (Branch): {{ user.program }} ({{ user.branch }})</span>
                 <span class="badge">Semester: Sem ({{ user.semester }})</span>
                 {% if user.email %}
-                <span class="badge">{{ user.email }}</span>
+                <span class="badge">Email: {{ user.email }}</span>
                 {% endif %}
             </div>
         </div>
