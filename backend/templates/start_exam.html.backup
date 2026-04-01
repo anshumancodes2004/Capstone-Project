@@ -610,11 +610,11 @@
             flex-shrink: 0;
         }
  
-        /* Adjust exam-wrap to exactly center horizontally on larger screens */
+        /* Adjust exam-wrap to make room for navigator */
         @media (min-width: 1100px) {
             .exam-wrap {
-                margin-left: auto !important;
-                margin-right: auto !important;
+                margin-left: 230px !important;
+                margin-right: 270px !important;
             }
         }
 
@@ -703,6 +703,7 @@
     </div>
 </div>
 
+<!-- Question Navigator -->
 <div class="q-nav-panel" id="qNavPanel" style="display:none;">
     <div class="q-nav-title">Questions</div>
     <div class="q-nav-grid" id="qNavGrid">

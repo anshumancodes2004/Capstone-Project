@@ -176,3 +176,71 @@
 </script>
 </body>
 </html>
+
+
+
+
+# ============================================================
+# ROUTE 2: Admin Violation Log Viewer
+# app.py mein add karo
+# ============================================================
+@app.route("/violation_logs")
+@login_required("admin")
+def violation_logs():
+    """
+    ~/oems_violations.log file parse karke admin ko dikhao.
+    """
+    log_path = os.path.join(os.path.expanduser("~"), "oems_violations.log")
+    logs     = []
+ 
+    if os.path.exists(log_path):
+        with open(log_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("="):
+                    continue
+ 
+                # Format: [2026-03-31T10:27:28.123456] MESSAGE
+                try:
+                    ts_end = line.index("]")
+                    timestamp = line[1:ts_end].replace("T", " ")[:19]
+                    rest      = line[ts_end + 2:].strip()
+ 
+                    # Type aur details parse karo
+                    if "|" in rest:
+                        # Format: VIOLATION | type=xxx | details=yyy
+                        parts   = rest.split("|")
+                        ev_type = parts[1].replace("type=", "").strip() if len(parts) > 1 else rest
+                        details = parts[2].replace("details=", "").strip() if len(parts) > 2 else ""
+                    else:
+                        ev_type = rest.split("—")[0].strip() if "—" in rest else rest[:30]
+                        details = rest
+ 
+                    logs.append({
+                        "timestamp": timestamp,
+                        "type":      ev_type,
+                        "details":   details
+                    })
+                except Exception:
+                    logs.append({
+                        "timestamp": "—",
+                        "type":      "LOG",
+                        "details":   line[:200]
+                    })
+ 
+    # Latest first
+    logs.reverse()
+ 
+    return render_template("violation_logs.html", logs=logs)
+
+
+
+
+# admin_dashboard.html mein violation logs link add karo:
+<a href="/violation_logs" class="action-item">
+    <div class="action-icon">🔍</div>
+    <div>
+        <div class="action-title">Violation Logs</div>
+        <div class="action-desc">View exam security events</div>
+    </div>
+</a>
