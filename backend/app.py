@@ -1765,7 +1765,7 @@ from ultralytics import YOLO
 
 try:
     phone_model = YOLO("yolov8n.pt")
-    print("YOLO Loaded Successfully")
+    # print("YOLO Loaded Successfully")
 except Exception as e:
     print("YOLO Load Error:", e)
     phone_model = None
