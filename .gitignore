@@ -19,3 +19,6 @@ Thumbs.db
 
 # Schedule or Cammands
 todo.md
+
+# Nginx - Reverse Proxy
+oems_nginx.conf

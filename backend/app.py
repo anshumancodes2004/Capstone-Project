@@ -2351,5 +2351,4 @@ def test_email(student_id, exam_id):
 
 # ---------------- RUN APP ----------------
 if __name__ == "__main__":
-    # Production mein debug=False ZAROOR karo
-    app.run(debug=False)
+    app.run(host='127.0.0.1', port=5000, debug=False)
