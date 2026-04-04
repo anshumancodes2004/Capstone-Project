@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 
 const CONFIG = {
-    baseUrl: 'http://127.0.0.1:5000'
+    baseUrl: 'http://localhost'
 };
 
 let mainWindow;
@@ -54,7 +54,10 @@ app.whenReady().then(() => {
         callback({ requestHeaders: details.requestHeaders });
     });
 
-    mainWindow.loadURL(CONFIG.baseUrl);
+    // ---------------------------------------------------------
+    // YAHAN CHANGE KIYA HAI: Direct URL ke bajaye Local HTML load karega
+    // ---------------------------------------------------------
+    mainWindow.loadFile('splash.html');
     writeLog('SESSION STARTED — OEMS Exam Browser launched.');
 
     // ============================================================
@@ -62,8 +65,10 @@ app.whenReady().then(() => {
     // ============================================================
     mainWindow.webContents.on('will-navigate', (event, url) => {
         const allowed =
-            url.startsWith('http://127.0.0.1:5000') ||
-            url.startsWith('http://localhost:5000');
+            url.startsWith('http://127.0.0.1') ||
+            url.startsWith('http://localhost') ||
+            url.startsWith('file://'); // Local start.html allow karne ke liye
+            
         if (!allowed) {
             event.preventDefault();
             writeLog(`BLOCKED navigation attempt to: ${url}`);
@@ -72,8 +77,6 @@ app.whenReady().then(() => {
 
     // ============================================================
     // FIX 2: NEW WINDOW BLOCK — window.open() ya _blank links
-    // Pehle yeh missing tha — student naya unrestricted window
-    // khol sakta tha
     // ============================================================
     mainWindow.webContents.setWindowOpenHandler(({ url }) => {
         writeLog(`BLOCKED new window attempt: ${url}`);
@@ -95,31 +98,40 @@ app.whenReady().then(() => {
     });
 
     // ============================================================
-    // FIX 4: KEYBOARD SHORTCUTS BLOCK
-    // F11, F12, Alt+Tab add kiye — terminal shortcut HATA DIYA
+    // FIX 4: ALLOW REFRESH (Cmd/Ctrl+R and F5)
+    // ============================================================
+    const refreshKeys = ['CommandOrControl+R', 'F5'];
+    
+    refreshKeys.forEach(key => {
+        globalShortcut.register(key, () => {
+            if (mainWindow) {
+                writeLog(`ALLOWED: User triggered page refresh using ${key}`);
+                mainWindow.webContents.reload();
+            }
+        });
+    });
+
+    // ============================================================
+    // FIX 5: KEYBOARD SHORTCUTS BLOCK (Removed Refresh Keys)
     // ============================================================
     const blockedShortcuts = [
-        'CommandOrControl+R',         // Reload
-        'F5',                         // Reload
-        'F11',                        // Fullscreen toggle
-        'F12',                        // DevTools (backup)
-        'CommandOrControl+Shift+I',   // DevTools
-        'CommandOrControl+Shift+J',   // DevTools (Chrome style)
-        'CommandOrControl+W',         // Close tab
-        'CommandOrControl+N',         // New window
-        'CommandOrControl+T',         // New tab
-        'Alt+F4',                     // Windows close
-        'CommandOrControl+C',         // Copy
-        'CommandOrControl+V',         // Paste
-        'CommandOrControl+X',         // Cut
-        'CommandOrControl+A',         // Select all
-        'CommandOrControl+Option+Space', // Mac Spotlight
-        'CommandOrControl+Tab',       // App switch
-        'Alt+Tab',                    // Windows app switch
-        'CommandOrControl+M',         // Minimize
-        'CommandOrControl+H',         // Hide (Mac)
-        // NOTE: CommandOrControl+Shift+T HATA DIYA —
-        // yeh terminal backdoor tha jो student bhi use kar sakta tha
+        'F11',                        
+        'F12',                        
+        'CommandOrControl+Shift+I',   
+        'CommandOrControl+Shift+J',   
+        'CommandOrControl+W',         
+        'CommandOrControl+N',         
+        'CommandOrControl+T',         
+        'Alt+F4',                     
+        'CommandOrControl+C',         
+        'CommandOrControl+V',         
+        'CommandOrControl+X',         
+        'CommandOrControl+A',         
+        'CommandOrControl+Option+Space', 
+        'CommandOrControl+Tab',       
+        'Alt+Tab',                    
+        'CommandOrControl+M',         
+        'CommandOrControl+H',         
     ];
 
     blockedShortcuts.forEach(key => {
@@ -136,8 +148,7 @@ app.whenReady().then(() => {
 });
 
 // ============================================================
-// FIX 5: IPC LISTENERS — preload.js se aane wale events
-// Pehle yeh missing tha — ipcRenderer.send() silently fail hota tha
+// FIX 6: IPC LISTENERS — preload.js se aane wale events
 // ============================================================
 
 // Violation log karo
@@ -151,7 +162,6 @@ ipcMain.on('violation', (event, data) => {
 ipcMain.on('submit-exam', (event) => {
     writeLog('EXAM SUBMITTED — safe quit triggered.');
     isSafeToQuit = true;
-    // 2 second baad quit karo taaki Flask form submit complete ho sake
     setTimeout(() => app.quit(), 2000);
 });
 
@@ -166,7 +176,6 @@ app.on('before-quit', (event) => {
     }
 });
 
-// Admin graceful shutdown — terminal se killall / kill
 process.on('SIGTERM', () => {
     writeLog('SIGTERM received — admin shutdown.');
     isSafeToQuit = true;
@@ -179,7 +188,6 @@ process.on('SIGINT', () => {
     app.quit();
 });
 
-// Cleanup
 app.on('will-quit', () => {
     globalShortcut.unregisterAll();
     writeLog('SESSION ENDED — shortcuts unregistered.\n' + '='.repeat(60));

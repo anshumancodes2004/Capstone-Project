@@ -1120,10 +1120,8 @@ class FortressExam {
         if (!confirm('⚠️ FINAL SUBMISSION\n\nAre you sure? This cannot be undone.')) return false;
         this.isSubmitted = true;
 
-        // Notify Electron (agar available ho)
-        if (window.secureBrowser && window.secureBrowser.submitExam) {
-            window.secureBrowser.submitExam();
-        }
+        // Electron ko band karne ka signal hata diya gaya hai.
+        // Ab return true se form submit hoga aur Flask dashboard par bhej dega.
         return true;
     }
 

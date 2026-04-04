@@ -7,68 +7,137 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
         * { margin:0; padding:0; box-sizing:border-box; font-family:'Poppins',sans-serif; }
-        body { background:#f4f7f6; min-height:100vh; padding:2rem;
-               background-image: radial-gradient(circle at top right,#eef2f3,transparent 40%),
-                                 radial-gradient(circle at bottom left,#e0eafc,transparent 40%); }
-        .container { max-width:900px; margin:0 auto; animation:fadeIn 0.8s ease-in-out; }
+        
+        body { 
+            background-color: #f4f7f6; 
+            color: #333; 
+            min-height: 100vh; 
+            padding: 2rem;
+            background-image: 
+                radial-gradient(circle at top right, #eef2f3, transparent 40%),
+                radial-gradient(circle at bottom left, #e0eafc, transparent 40%); 
+        }
+        
+        .container { max-width:1000px; margin:0 auto; animation:fadeIn 0.8s ease-in-out; }
 
-        /* Header */
-        .header-section { margin-bottom:2rem; }
-        .header-content { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; }
-        .header-title { font-size:2rem; font-weight:600; color:#2c3e50; text-transform:uppercase; letter-spacing:2px; }
-        .back-btn { display:inline-block; color:#555; text-decoration:none; font-size:0.9rem; border:1px solid #ccc; padding:9px 22px; border-radius:25px; transition:0.3s; background:white; font-weight:500; }
-        .back-btn:hover { background:#f0f0f0; color:#111; }
-        .split-line { width:100%; height:2px; background:linear-gradient(90deg,transparent,#007bff,#00c6ff,#007bff,transparent); animation:glowingLine 2s infinite alternate; }
+        /* ── Header (Dashboard Style) ── */
+        .header-section { margin-bottom: 2.5rem; }
+        .header-content { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .header-title { font-size: 2.2rem; font-weight: 600; color: #2c3e50; text-transform: uppercase; letter-spacing: 2px; line-height: 1.2; }
+        .back-btn { display: inline-block; color: #555; text-decoration: none; font-size: 0.95rem; border: 1px solid #ccc; padding: 9px 22px; border-radius: 25px; transition: 0.3s; background: white; white-space: nowrap; font-weight: 500; }
+        .back-btn:hover { background: #f0f0f0; color: #111; border-color: #aaa; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .split-line { width: 100%; height: 2px; background: linear-gradient(90deg, transparent, #007bff, #00c6ff, #007bff, transparent); box-shadow: 0 0 10px rgba(0,123,255,0.4); animation: glowingLine 2s infinite alternate; }
 
-        /* Score Hero Card */
-        .score-hero { background:white; border-radius:18px; padding:2rem; margin-bottom:1.5rem; display:flex; gap:2rem; align-items:center; box-shadow:0 4px 20px rgba(31,38,135,0.07); border:1px solid rgba(0,0,0,0.05); }
-        .score-circle { width:120px; height:120px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; flex-shrink:0; border:5px solid #e9ecef; }
-        .score-circle.pass { border-color:#22c55e; background:#f0fdf4; }
-        .score-circle.fail { border-color:#ef4444; background:#fef2f2; }
-        .score-big { font-size:1.8rem; font-weight:700; line-height:1; }
+        /* ── Glassmorphism Score Hero ── */
+        .score-hero { 
+            background: rgba(255, 255, 255, 0.85); 
+            backdrop-filter: blur(12px); 
+            border-radius: 18px; 
+            padding: 2.5rem; 
+            margin-bottom: 2rem; 
+            display: flex; 
+            gap: 2.5rem; 
+            align-items: center; 
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.07); 
+            border: 1px solid rgba(255, 255, 255, 0.5); 
+        }
+        .score-circle { width:130px; height:130px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; flex-shrink:0; border:6px solid #e9ecef; background: rgba(255,255,255,0.9); box-shadow: inset 0 4px 10px rgba(0,0,0,0.05); }
+        .score-circle.pass { border-color:#22c55e; }
+        .score-circle.fail { border-color:#ef4444; }
+        .score-big { font-size:2rem; font-weight:700; line-height:1; }
         .score-big.pass { color:#16a34a; }
         .score-big.fail { color:#dc2626; }
-        .score-sub { font-size:0.75rem; color:#6c757d; margin-top:2px; }
-        .score-details h2 { font-size:1.4rem; font-weight:600; color:#2c3e50; margin-bottom:6px; }
-        .score-details p { color:#6c757d; font-size:0.9rem; margin-bottom:4px; }
-        .result-pill { display:inline-block; padding:4px 16px; border-radius:20px; font-size:0.85rem; font-weight:600; margin-top:6px; }
+        .score-sub { font-size:0.8rem; color:#6c757d; margin-top:4px; font-weight: 500; }
+        
+        .score-details h2 { font-size:1.6rem; font-weight:600; color:#2c3e50; margin-bottom:8px; }
+        .score-details p { color:#495057; font-size:0.95rem; margin-bottom:6px; font-weight: 500; }
+        .score-details strong { color: #2c3e50; }
+        
+        .result-pill { display:inline-block; padding:5px 18px; border-radius:20px; font-size:0.85rem; font-weight:600; margin-top:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
         .result-pill.pass { background:#e8f5e9; color:#2e7d32; border:1px solid #c8e6c9; }
         .result-pill.fail { background:#ffebee; color:#c62828; border:1px solid #ffcdd2; }
 
-        /* Stats Strip */
-        .stats-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:1rem; margin-bottom:1.5rem; }
-        .stat-pill { background:white; border-radius:12px; padding:1rem; text-align:center; box-shadow:0 2px 10px rgba(31,38,135,0.05); border:1px solid rgba(0,0,0,0.04); }
-        .stat-val { font-size:1.6rem; font-weight:600; color:#2c3e50; }
-        .stat-lbl { font-size:0.75rem; color:#6c757d; font-weight:500; margin-top:2px; }
+        /* ── Pending Banner Glass ── */
+        .pending-banner { 
+            background: rgba(255, 248, 225, 0.9); 
+            backdrop-filter: blur(10px);
+            border-left: 4px solid #f59e0b; 
+            border-radius: 12px; 
+            padding: 1.2rem 1.5rem; 
+            margin-bottom: 2rem; 
+            display: flex; 
+            align-items: center; 
+            gap: 15px; 
+            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.1);
+        }
+        .pending-banner-text { font-size:0.95rem; color:#92400e; line-height: 1.5; }
 
-        /* Pending banner */
-        .pending-banner { background:#fff8e1; border:1px solid #ffe082; border-left:4px solid #f59e0b; border-radius:12px; padding:1rem 1.2rem; margin-bottom:1.5rem; display:flex; align-items:center; gap:12px; }
-        .pending-banner-text { font-size:0.9rem; color:#92400e; }
+        /* ── Stats Strip Glassmorphism ── */
+        .stats-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1.5rem; margin-bottom:2.5rem; }
+        .stat-pill { 
+            background: rgba(255, 255, 255, 0.85); 
+            backdrop-filter: blur(12px); 
+            border-radius: 15px; 
+            padding: 1.5rem; 
+            text-align: center; 
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05); 
+            border: 1px solid rgba(255, 255, 255, 0.5); 
+            transition: transform 0.3s ease;
+        }
+        .stat-pill:hover { transform: translateY(-5px); }
+        .stat-val { font-size:1.8rem; font-weight:600; color:#2c3e50; }
+        .stat-lbl { font-size:0.85rem; color:#6c757d; font-weight:500; margin-top:4px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-        /* Question cards */
-        .section-title { font-size:1rem; font-weight:600; color:#2c3e50; margin-bottom:1rem; }
-        .q-card { background:white; border-radius:12px; padding:1.2rem 1.4rem; margin-bottom:10px; border:1px solid rgba(0,0,0,0.05); box-shadow:0 2px 10px rgba(31,38,135,0.04); }
-        .q-card.correct { border-left:4px solid #22c55e; border-radius:0 12px 12px 0; }
-        .q-card.wrong   { border-left:4px solid #ef4444; border-radius:0 12px 12px 0; }
-        .q-card.partial { border-left:4px solid #f59e0b; border-radius:0 12px 12px 0; }
-        .q-card.pending { border-left:4px solid #94a3b8; border-radius:0 12px 12px 0; }
-        .q-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; }
-        .q-num { font-size:0.75rem; font-weight:600; color:#6c757d; background:#f1f5f9; padding:3px 10px; border-radius:20px; }
-        .q-score-badge { font-size:0.82rem; font-weight:700; padding:3px 12px; border-radius:20px; }
-        .score-full    { background:#e8f5e9; color:#2e7d32; }
-        .score-partial { background:#fff3e0; color:#e65100; }
-        .score-zero    { background:#ffebee; color:#c62828; }
-        .score-pend    { background:#f1f5f9; color:#475569; }
-        .q-text { font-size:0.95rem; font-weight:500; color:#2c3e50; margin-bottom:10px; line-height:1.5; }
-        .q-answer-wrap { background:#f8fafc; border-radius:8px; padding:10px 14px; margin-bottom:8px; border:1px solid #e2e8f0; }
-        .q-answer-lbl { font-size:0.75rem; font-weight:600; color:#6c757d; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; }
-        .q-answer-text { font-size:0.88rem; color:#374151; line-height:1.6; }
-        .q-feedback { font-size:0.82rem; color:#6c757d; font-style:italic; margin-top:4px; }
+        /* ── Question Cards Glassmorphism ── */
+        .section-title { font-size:1.2rem; font-weight:600; color:#2c3e50; margin-bottom:1.2rem; display: flex; align-items: center; gap: 8px; }
+        
+        .q-card { 
+            background: rgba(255, 255, 255, 0.85); 
+            backdrop-filter: blur(12px); 
+            border-radius: 15px; 
+            padding: 1.5rem; 
+            margin-bottom: 15px; 
+            border: 1px solid rgba(255, 255, 255, 0.5); 
+            box-shadow: 0 4px 15px rgba(31, 38, 135, 0.05); 
+            position: relative;
+            overflow: hidden;
+        }
+        .q-card::before {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+        }
+        .q-card.correct::before { background: #22c55e; }
+        .q-card.wrong::before   { background: #ef4444; }
+        .q-card.partial::before { background: #f59e0b; }
+        .q-card.pending::before { background: #94a3b8; }
+        
+        .q-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; padding-left: 10px; }
+        .q-num { font-size:0.8rem; font-weight:600; color:#4f46e5; background:rgba(79, 70, 229, 0.1); padding:4px 12px; border-radius:20px; }
+        .q-score-badge { font-size:0.85rem; font-weight:600; padding:4px 14px; border-radius:20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .score-full    { background:#e8f5e9; color:#2e7d32; border: 1px solid #c8e6c9;}
+        .score-partial { background:#fff3e0; color:#e65100; border: 1px solid #ffe0b2;}
+        .score-zero    { background:#ffebee; color:#c62828; border: 1px solid #ffcdd2;}
+        .score-pend    { background:#f1f5f9; color:#475569; border: 1px solid #e2e8f0;}
+        
+        .q-text { font-size:1rem; font-weight:500; color:#2c3e50; margin-bottom:15px; line-height:1.6; padding-left: 10px; }
+        
+        .q-answer-wrap { 
+            background: rgba(248, 250, 252, 0.8); 
+            border-radius: 10px; 
+            padding: 12px 16px; 
+            margin-bottom: 10px; 
+            border: 1px solid #e2e8f0; 
+            margin-left: 10px;
+        }
+        .q-answer-lbl { font-size:0.75rem; font-weight:600; color:#6c757d; text-transform:uppercase; letter-spacing:0.8px; margin-bottom:6px; }
+        .q-answer-text { font-size:0.95rem; color:#333; line-height:1.6; font-weight: 500; }
+        
+        .q-feedback { font-size:0.85rem; color:#0284c7; font-weight: 500; margin-top:8px; padding-left: 10px; display: flex; align-items: center; gap: 5px; }
 
         @keyframes fadeIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
         @keyframes glowingLine { from{opacity:0.6} to{opacity:1;box-shadow:0 0 12px rgba(0,198,255,0.6)} }
+        
         @media(max-width:600px) {
-            .score-hero { flex-direction:column; text-align:center; }
+            .score-hero { flex-direction:column; text-align:center; padding: 1.5rem; }
             .header-content { flex-direction:column; align-items:flex-start; gap:1rem; }
         }
     </style>
@@ -78,13 +147,12 @@
 
     <div class="header-section">
         <div class="header-content">
-            <h1 class="header-title">My Result</h1>
+            <h1 class="header-title">Exam Result</h1>
             <a href="/student" class="back-btn">← Back to Dashboard</a>
         </div>
         <div class="split-line"></div>
     </div>
 
-    <!-- Score Hero -->
     <div class="score-hero">
         <div class="score-circle {{ 'pass' if percentage >= 35 else 'fail' }}">
             <span class="score-big {{ 'pass' if percentage >= 35 else 'fail' }}">
@@ -95,37 +163,35 @@
         <div class="score-details">
             <h2>{{ exam.title }}</h2>
             <p>📅 {{ exam.start_time.strftime('%d %b %Y, %I:%M %p') if exam.start_time else '—' }}</p>
-            <p>🎓 {{ student.name }} · {{ student.admission_no }}</p>
-            <p>Total Score: <strong>{{ total_score }} / {{ max_marks }}</strong></p>
+            <p>🎓 {{ student.name }} &nbsp;•&nbsp; <span style="background:#e9ecef; padding:2px 8px; border-radius:6px; font-size:0.85rem;">{{ student.admission_no }}</span></p>
+            <p style="margin-top: 10px;">Total Score: <strong style="font-size: 1.1rem;">{{ total_score }} / {{ max_marks }}</strong></p>
             <span class="result-pill {{ 'pass' if percentage >= 35 else 'fail' }}">
                 {{ 'PASS' if percentage >= 35 else 'FAIL' }}
             </span>
         </div>
     </div>
 
-    <!-- Pending banner -->
     {% if submission_status == 'Pending' %}
     <div class="pending-banner">
-        <span style="font-size:1.5rem;">⏳</span>
+        <span style="font-size:1.8rem;">⏳</span>
         <div class="pending-banner-text">
-            <strong>Theory answers are being evaluated.</strong>
+            <strong>Theory answers are being evaluated.</strong><br>
             Your final score will be updated shortly and sent to your email.
         </div>
     </div>
     {% endif %}
 
-    <!-- Stats Strip -->
     <div class="stats-strip">
         <div class="stat-pill">
             <div class="stat-val">{{ total_questions }}</div>
             <div class="stat-lbl">Total Questions</div>
         </div>
         <div class="stat-pill">
-            <div class="stat-val">{{ attempted }}</div>
+            <div class="stat-val" style="color: #4f46e5;">{{ attempted }}</div>
             <div class="stat-lbl">Attempted</div>
         </div>
         <div class="stat-pill">
-            <div class="stat-val">{{ not_attempted }}</div>
+            <div class="stat-val" style="color: #dc2626;">{{ not_attempted }}</div>
             <div class="stat-lbl">Not Attempted</div>
         </div>
         <div class="stat-pill">
@@ -134,12 +200,12 @@
         </div>
     </div>
 
-    <!-- Question-wise Breakdown -->
     <div class="section-title">📋 Question-wise Breakdown</div>
 
     {% for a in answers %}
     {% set score = a.score if a.score is not none else 0 %}
     {% set is_pending = a.score is none %}
+    
     {% if is_pending %}
         {% set card_class = 'pending' %}
         {% set badge_class = 'score-pend' %}
@@ -164,6 +230,7 @@
             <span class="q-score-badge {{ badge_class }}">{{ badge_text }}</span>
         </div>
         <p class="q-text">{{ a.question_text }}</p>
+        
         <div class="q-answer-wrap">
             <div class="q-answer-lbl">Your Answer</div>
             <div class="q-answer-text">
@@ -174,8 +241,9 @@
                 {% endif %}
             </div>
         </div>
+        
         {% if a.feedback and a.feedback != 'Pending AI evaluation' %}
-        <div class="q-feedback">💬 {{ a.feedback }}</div>
+        <div class="q-feedback">💬 <span>{{ a.feedback }}</span></div>
         {% endif %}
     </div>
     {% endfor %}
