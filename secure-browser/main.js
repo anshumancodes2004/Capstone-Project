@@ -30,7 +30,7 @@ function injectExitButton() {
             if (document.getElementById('oems-exit-btn')) return;
             const btn = document.createElement('div');
             btn.id = 'oems-exit-btn';
-            btn.innerHTML = '✕ Exit';
+            btn.innerHTML = '← Exit';
             btn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:999999;background:rgba(239,68,68,0.15);color:#ef4444;border:1.5px solid rgba(239,68,68,0.4);padding:8px 18px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;font-family:sans-serif;backdrop-filter:blur(10px);transition:all 0.2s;user-select:none;-webkit-user-select:none;';
             btn.addEventListener('mouseenter', () => { btn.style.background='rgba(239,68,68,0.3)'; btn.style.borderColor='#ef4444'; });
             btn.addEventListener('mouseleave', () => { btn.style.background='rgba(239,68,68,0.15)'; btn.style.borderColor='rgba(239,68,68,0.4)'; });
