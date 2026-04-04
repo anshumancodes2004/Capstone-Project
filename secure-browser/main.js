@@ -62,6 +62,8 @@ app.whenReady().then(() => {
 
     // ============================================================
     // FIX 1: will-navigate — sirf allowed URLs
+    // ---------------------------------------------------------
+    // YAHAN BHI CHANGE KIYA HAI: Nginx (port 80) aur local files ko allow kiya
     // ============================================================
     mainWindow.webContents.on('will-navigate', (event, url) => {
         const allowed =
@@ -98,23 +100,11 @@ app.whenReady().then(() => {
     });
 
     // ============================================================
-    // FIX 4: ALLOW REFRESH (Cmd/Ctrl+R and F5)
-    // ============================================================
-    const refreshKeys = ['CommandOrControl+R', 'F5'];
-    
-    refreshKeys.forEach(key => {
-        globalShortcut.register(key, () => {
-            if (mainWindow) {
-                writeLog(`ALLOWED: User triggered page refresh using ${key}`);
-                mainWindow.webContents.reload();
-            }
-        });
-    });
-
-    // ============================================================
-    // FIX 5: KEYBOARD SHORTCUTS BLOCK (Removed Refresh Keys)
+    // FIX 4: KEYBOARD SHORTCUTS BLOCK
     // ============================================================
     const blockedShortcuts = [
+        'CommandOrControl+R',         
+        'F5',                         
         'F11',                        
         'F12',                        
         'CommandOrControl+Shift+I',   
@@ -148,7 +138,7 @@ app.whenReady().then(() => {
 });
 
 // ============================================================
-// FIX 6: IPC LISTENERS — preload.js se aane wale events
+// FIX 5: IPC LISTENERS — preload.js se aane wale events
 // ============================================================
 
 // Violation log karo
