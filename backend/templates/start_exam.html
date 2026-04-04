@@ -862,6 +862,9 @@ class FortressExam {
         this.showQuestion(0);
         this._updateNavigator(0);
         this._attachAnswerListeners();
+
+        if (window.secureBrowser) window.secureBrowser.examStarted();
+        
         this.startTimer();
         if (this.aiProctoring) {
             this.startProctoring();
@@ -1120,8 +1123,10 @@ class FortressExam {
         if (!confirm('⚠️ FINAL SUBMISSION\n\nAre you sure? This cannot be undone.')) return false;
         this.isSubmitted = true;
 
-        // Electron ko band karne ka signal hata diya gaya hai.
-        // Ab return true se form submit hoga aur Flask dashboard par bhej dega.
+        // Notify Electron (agar available ho)
+        if (window.secureBrowser && window.secureBrowser.submitExam) {
+            window.secureBrowser.submitExam();
+        }
         return true;
     }
 
@@ -1186,6 +1191,12 @@ class FortressExam {
                 this._showToast('Reload blocked during exam', false);
             }
         }, true);
+
+        // Cmd+R / Ctrl+R / Cmd+Shift+R block
+        if ((e.metaKey || e.ctrlKey) && (e.key === 'r' || e.key === 'R')) {
+            e.preventDefault();
+            this._showToast('Reload blocked during exam', false);
+        }
 
         // ==============================================================
         // TODO: UNCOMMENT FOR PRODUCTION (START) - COPY/PASTE/RIGHT-CLICK
