@@ -2288,65 +2288,64 @@ def student_result(exam_id):
     )
 
 
+# ============================================================
+# Admin Violation Log Viewer Route
+# ============================================================
+@app.route("/violation_logs")
+@login_required("admin")
+def violation_logs():
+    """
+    ~/oems_violations.log file parse karke admin ko dikhao.
+    """
+    log_path = os.path.join(os.path.expanduser("~"), "oems_violations.log")
+    logs     = []
+ 
+    if os.path.exists(log_path):
+        with open(log_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("="):
+                    continue
+ 
+                # Format: [2026-03-31T10:27:28.123456] MESSAGE
+                try:
+                    ts_end = line.index("]")
+                    timestamp = line[1:ts_end].replace("T", " ")[:19]
+                    rest      = line[ts_end + 2:].strip()
+ 
+                    # Type aur details parse karo
+                    if "|" in rest:
+                        # Format: VIOLATION | type=xxx | details=yyy
+                        parts   = rest.split("|")
+                        ev_type = parts[1].replace("type=", "").strip() if len(parts) > 1 else rest
+                        details = parts[2].replace("details=", "").strip() if len(parts) > 2 else ""
+                    else:
+                        ev_type = rest.split("—")[0].strip() if "—" in rest else rest[:30]
+                        details = rest
+ 
+                    logs.append({
+                        "timestamp": timestamp,
+                        "type":      ev_type,
+                        "details":   details
+                    })
+                except Exception:
+                    logs.append({
+                        "timestamp": "—",
+                        "type":      "LOG",
+                        "details":   line[:200]
+                    })
+ 
+    # Latest first
+    logs.reverse()
+ 
+    return render_template("violation_logs.html", logs=logs)
+
+
 # ---------------- LOGOUT ----------------
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/")
-
-
-# ---------------- EMAIL RESENDER FOR TESTING ----------------
-@app.route('/test_email/<int:student_id>/<int:exam_id>')
-def test_email(student_id, exam_id):
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        
-        # 1. Fetch Student & Exam
-        cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
-        student = cursor.fetchone()
-        
-        cursor.execute("SELECT * FROM exams WHERE id = %s", (exam_id,))
-        exam = cursor.fetchone()
-        
-        # 2. Fetch Answers
-        cursor.execute("""
-            SELECT q.question_text, q.marks, q.question_type,
-                   a.answer AS student_answer, a.score, a.feedback
-            FROM answers a
-            JOIN questions q ON a.question_id = q.id
-            WHERE a.student_id = %s AND a.exam_id = %s
-            ORDER BY q.id
-        """, (student_id, exam_id))
-        all_answers = cursor.fetchall()
-        
-        # 3. Fetch Total Score
-        cursor.execute("SELECT total_score FROM results WHERE student_id = %s AND exam_id = %s", (student_id, exam_id))
-        res = cursor.fetchone()
-        total_score = float(res['total_score']) if res else 0.0
-        
-        cursor.close()
-        conn.close()
-
-        # Handle None values for PDF
-        for ans in all_answers:
-            if ans['score'] is None: ans['score'] = 0
-            if not ans['feedback']: ans['feedback'] = 'Evaluated'
-            if not ans['student_answer']: ans['student_answer'] = ''
-
-        # 4. Calculate Percentage
-        max_marks = sum(a['marks'] for a in all_answers)
-        percentage = (total_score / max_marks * 100) if max_marks > 0 else 0
-
-        # 5. Generate New PDF & Send Email
-        pdf_bytes = generate_result_pdf(student, exam, all_answers, total_score, percentage)
-        send_result_email(student, exam, total_score, percentage, pdf_bytes)
-        
-        return f"<h1>✅ Email successfully sent to {student['email']}!</h1><p>Check your inbox to see the new PDF design.</p>"
-
-    except Exception as e:
-        return f"<h1>❌ Error:</h1><p>{str(e)}</p>"
-
 
 
 # ---------------- RUN APP ----------------
