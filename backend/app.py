@@ -337,28 +337,42 @@ def send_result_email(student, exam, total_score, percentage, pdf_bytes):
         msg['From']    = formataddr(('OEMS Examination Team', EMAIL_CONFIG['SENDER_EMAIL']))
         msg['To']      = student_email
         msg['Subject'] = f"Exam Result: {exam_title}"
+        ref_id = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         html = f"""
-<html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;">
-<table align="center" width="100%" style="max-width:500px;background:#fff;border-radius:8px;border:1px solid #e2e8f0;margin:0 auto;">
+<html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;margin:0;">
+<table align="center" width="100%" style="max-width:500px;background:#fff;border-radius:8px;border:1px solid #e0e0e0;margin:0 auto;border-collapse:collapse;">
   <tr>
-    <td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #d1e8da;">
-      <h2 style="margin:0;color:#1e293b;font-size:18px;font-weight:600;">Exam Result Published</h2>
+    <td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #c8e6c9;">
+      <p style="margin:0;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;">OEMS Examination Team</p>
+      <h2 style="margin:4px 0 0;color:#1e293b;font-size:20px;font-weight:700;">Exam Result Published</h2>
     </td>
   </tr>
   <tr>
-    <td style="padding:24px;">
-      <p style="margin:0 0 12px;color:#333;">Hi {first_name},</p>
-      <p style="margin:0 0 16px;color:#333;">Your result for <strong>{exam_title}</strong> has been evaluated.</p>
-      <table width="100%" style="background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:16px;">
-        <tr><td style="padding:10px 14px;color:#333;"><strong>Total Score:</strong></td>
-            <td style="padding:10px 14px;color:#333;text-align:right;"><strong>{total_score}</strong></td></tr>
-        <tr style="background:#fff;"><td style="padding:10px 14px;color:#333;"><strong>Percentage:</strong></td>
-            <td style="padding:10px 14px;color:#333;text-align:right;"><strong>{pct}%</strong></td></tr>
-        <tr><td style="padding:10px 14px;color:#333;"><strong>Result:</strong></td>
-            <td style="padding:10px 14px;text-align:right;"><strong style="color:{result_color};">{result_word}</strong></td></tr>
+    <td style="padding:28px 24px;">
+      <p style="margin:0 0 16px;color:#333;font-size:15px;">Hi <strong>{first_name}</strong>,</p>
+      <p style="margin:0 0 16px;color:#555;font-size:14px;line-height:1.6;">Your result for <strong>{exam_title}</strong> has been evaluated.</p>
+      <table width="100%" style="background:#f8fafc;border-radius:6px;border:1px solid #e0e0e0;margin-bottom:20px;border-collapse:collapse;">
+        <tr>
+          <td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;width:50%;">Total Score</td>
+          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;text-align:right;"><strong>{total_score}</strong></td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;">Percentage</td>
+          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;text-align:right;"><strong>{pct}%</strong></td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;">Result</td>
+          <td style="padding:10px 14px;font-size:14px;text-align:right;"><strong style="color:{result_color};">{result_word}</strong></td>
+        </tr>
       </table>
-      <p style="margin:0 0 20px;font-size:13px;color:#888;">Detailed question-wise analysis is attached as a PDF report.</p>
-      <p style="margin:0;color:#333;"><strong>Regards,</strong><br>OEMS Examination Team</p>
+      <p style="margin:0 0 20px;font-size:13px;color:#888;line-height:1.5;">Detailed question-wise analysis is attached as a PDF report.</p>
+      <p style="margin:0 0 4px;color:#333;font-size:14px;"><strong>Regards,</strong></p>
+      <p style="margin:0;color:#555;font-size:14px;">OEMS Examination Team</p>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:12px 24px;border-top:1px solid #f0f0f0;text-align:center;">
+      <p style="margin:0;font-size:11px;color:#aaa;">Ref ID: {ref_id}</p>
     </td>
   </tr>
 </table>
@@ -1170,7 +1184,7 @@ class EmailService:
             first_name   = get_first_name(user_name)
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             msg = MIMEMultipart('alternative')
-            msg['From']    = formataddr(('OEMS Support', self.sender_email))
+            msg['From']    = formataddr(('OEMS Support Team', self.sender_email))
             msg['To']      = receiver_email
             if mode == "password":
                 msg['Subject'] = 'OEMS Account - Password Reset Request'
@@ -1183,32 +1197,61 @@ class EmailService:
                 warning_text = "If you did not request an email change, please ignore this email."
                 heading      = "Email Verification"
 
-            text_content = f"Hi {first_name},\n\nYour OTP: {otp}\nValid for {EMAIL_CONFIG['OTP_EXPIRY_MINUTES']} minutes.\n\nRegards,\nOEMS Support Team"
+            ref_id       = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            text_content = (
+                f"Hi {first_name},\n\n"
+                f"We received a request to {action_text}.\n\n"
+                f"Verification Code\n"
+                f"Please use the following 6-digit code to complete your process. "
+                f"It is valid for {EMAIL_CONFIG['OTP_EXPIRY_MINUTES']} minutes.\n\n"
+                f"{otp}\n\n"
+                f"Security Notice\n"
+                f"{warning_text}\n\n"
+                f"Regards,\nOEMS Support Team\n\nRef ID: {ref_id}"
+            )
             html_content = f"""
-<html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;">
-<table align="center" width="100%" style="max-width:500px;background:#fff;border-radius:8px;border:1px solid #e2e8f0;margin:0 auto;">
+<html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;margin:0;">
+<table align="center" width="100%" style="max-width:500px;background:#fff;border-radius:8px;border:1px solid #e0e0e0;margin:0 auto;border-collapse:collapse;">
   <tr>
-    <td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #d1e8da;">
-      <h2 style="margin:0;color:#1e293b;font-size:18px;font-weight:600;">{heading}</h2>
+    <td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #c8e6c9;">
+      <p style="margin:0;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;">OEMS Security Update</p>
+      <h2 style="margin:4px 0 0;color:#1e293b;font-size:20px;font-weight:700;">{heading}</h2>
     </td>
   </tr>
   <tr>
-    <td style="padding:24px;">
-      <p style="margin:0 0 12px;color:#333;">Hi {first_name},</p>
-      <p style="margin:0 0 16px;color:#333;">We received a request to {action_text}.</p>
-      <p style="margin:0 0 8px;font-weight:bold;color:#333;">Your OTP:</p>
-      <table width="100%">
+    <td style="padding:28px 24px;">
+      <p style="margin:0 0 16px;color:#333;font-size:15px;">Hi <strong>{first_name}</strong>,</p>
+      <p style="margin:0 0 20px;color:#555;font-size:14px;line-height:1.6;">We received a request to {action_text}.</p>
+
+      <p style="margin:0 0 8px;color:#333;font-size:14px;font-weight:700;">Verification Code</p>
+      <p style="margin:0 0 12px;color:#555;font-size:14px;line-height:1.6;">Please use the following 6-digit code to complete your process. It is valid for {EMAIL_CONFIG['OTP_EXPIRY_MINUTES']} minutes.</p>
+
+      <table width="100%" style="margin-bottom:20px;">
         <tr>
-          <td align="center" style="background:#f8fafc;padding:14px;border-radius:4px;border:1px dashed #cbd5e1;">
-            <span style="font-family:monospace;font-size:28px;font-weight:bold;letter-spacing:8px;color:#1e293b;">{otp}</span>
+          <td align="center" style="background:#f8fafc;padding:16px;border-radius:6px;border:1.5px dashed #b0bec5;">
+            <span style="font-family:monospace;font-size:32px;font-weight:800;letter-spacing:10px;color:#1e293b;">{otp}</span>
           </td>
         </tr>
       </table>
-      <p style="margin:16px 0 0;font-size:13px;color:#888;">Valid for {EMAIL_CONFIG['OTP_EXPIRY_MINUTES']} minutes. {warning_text}</p>
-      <p style="margin:20px 0 0;color:#333;"><strong>Regards,</strong><br>OEMS Support Team</p>
-      <p style="margin:8px 0 0;font-size:11px;color:#aaa;border-top:1px solid #e2e8f0;padding-top:8px;">
-        This email was generated on {current_time} by OEMS — Online Examination Management System.
-      </p>
+
+      <p style="margin:0 0 8px;color:#333;font-size:14px;font-weight:700;">Security Notice</p>
+      <table width="100%" style="margin-bottom:24px;">
+        <tr>
+          <td style="background:#fff3e0;border-left:4px solid #ff9800;border-radius:0 4px 4px 0;padding:12px 14px;">
+            <p style="margin:0;color:#e65100;font-size:13px;line-height:1.5;">
+              ⚠️ {warning_text}
+            </p>
+          </td>
+        </tr>
+      </table>
+
+      <p style="margin:0 0 4px;color:#333;font-size:14px;"><strong>Regards,</strong></p>
+      <p style="margin:0;color:#555;font-size:14px;">OEMS Support Team</p>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:12px 24px;border-top:1px solid #f0f0f0;text-align:center;">
+      <p style="margin:0;font-size:11px;color:#aaa;">Ref ID: {ref_id}</p>
     </td>
   </tr>
 </table>
@@ -1228,7 +1271,7 @@ class EmailService:
         try:
             first_name = get_first_name(user_name)
             msg = MIMEMultipart('alternative')
-            msg['From'] = formataddr(('OEMS Support', self.sender_email))
+            msg['From'] = formataddr(('OEMS Support Team', self.sender_email))
             msg['To']   = receiver_email
             if mode == 'password':
                 msg['Subject'] = "OEMS Account - Password Updated Successfully"
@@ -1254,12 +1297,12 @@ class EmailService:
       <p style="margin:0 0 16px;color:#333;">{message}</p>
       <p style="margin:20px 0 0;color:#333;"><strong>Regards,</strong><br>OEMS Support Team</p>
       <p style="margin:8px 0 0;font-size:11px;color:#aaa;border-top:1px solid #e2e8f0;padding-top:8px;">
-        This email was generated on {generated_at} by OEMS — Online Examination Management System.
+        Ref ID: {ref_id}
       </p>
     </td>
   </tr>
 </table>
-</body></html>""".format(generated_at=datetime.now().strftime("%d %b %Y, %I:%M %p"))
+</body></html>""".format(ref_id=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             msg.attach(MIMEText(text_content, 'plain'))
             msg.attach(MIMEText(html_content, 'html'))
             with self._create_connection() as server:
@@ -1277,32 +1320,43 @@ class EmailService:
         msg['From']    = formataddr(('OEMS Examination Team', self.sender_email))
         msg['To']      = receiver_email
         msg['Subject'] = f"New Exam Scheduled: {exam_name}"
-        text_content = f"Hi {first_name},\n\nA new exam has been scheduled.\n\nCourse: {exam_name}\nDate: {exam_date}\nDuration: {duration} minutes\n\nBest of luck!\n\nRegards,\nOEMS Examination Team"
+        ref_id       = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        text_content = f"Hi {first_name},\n\nA new exam has been scheduled.\n\nCourse: {exam_name}\nDate: {exam_date}\nDuration: {duration} minutes\n\nBest of luck!\n\nRegards,\nOEMS Examination Team\n\nRef ID: {ref_id}"
         html_content = f"""
-<html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;">
-<table align="center" width="100%" style="max-width:500px;background:#fff;border-radius:8px;border:1px solid #e2e8f0;margin:0 auto;">
+<html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;margin:0;">
+<table align="center" width="100%" style="max-width:500px;background:#fff;border-radius:8px;border:1px solid #e0e0e0;margin:0 auto;border-collapse:collapse;">
   <tr>
-    <td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #d1e8da;">
-      <h2 style="margin:0;color:#1e293b;font-size:18px;font-weight:600;">New Exam Scheduled</h2>
+    <td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #c8e6c9;">
+      <p style="margin:0;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;">OEMS Examination Team</p>
+      <h2 style="margin:4px 0 0;color:#1e293b;font-size:20px;font-weight:700;">New Exam Scheduled</h2>
     </td>
   </tr>
   <tr>
-    <td style="padding:24px;">
-      <p style="margin:0 0 12px;color:#333;">Hi {first_name},</p>
-      <p style="margin:0 0 16px;color:#333;">A new exam has been published for your batch:</p>
-      <table width="100%" style="background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:16px;">
-        <tr><td style="padding:10px 14px;color:#333;"><strong>Course:</strong></td>
-            <td style="padding:10px 14px;color:#333;">{exam_name}</td></tr>
-        <tr style="background:#fff;"><td style="padding:10px 14px;color:#333;"><strong>Date:</strong></td>
-            <td style="padding:10px 14px;color:#333;">{exam_date}</td></tr>
-        <tr><td style="padding:10px 14px;color:#333;"><strong>Duration:</strong></td>
-            <td style="padding:10px 14px;color:#333;">{duration} minutes</td></tr>
+    <td style="padding:28px 24px;">
+      <p style="margin:0 0 16px;color:#333;font-size:15px;">Hi <strong>{first_name}</strong>,</p>
+      <p style="margin:0 0 16px;color:#555;font-size:14px;line-height:1.6;">A new exam has been published for your batch:</p>
+      <table width="100%" style="background:#f8fafc;border-radius:6px;border:1px solid #e0e0e0;margin-bottom:20px;border-collapse:collapse;">
+        <tr>
+          <td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;width:35%;">Course</td>
+          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;">{exam_name}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;">Date</td>
+          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;">{exam_date}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;">Duration</td>
+          <td style="padding:10px 14px;color:#555;font-size:14px;">{duration} minutes</td>
+        </tr>
       </table>
-      <p style="margin:0 0 20px;color:#333;">Best of luck!</p>
-      <p style="margin:0;color:#333;"><strong>Regards,</strong><br>OEMS Examination Team</p>
-      <p style="margin:8px 0 0;font-size:11px;color:#aaa;border-top:1px solid #e2e8f0;padding-top:8px;">
-        This email was generated on {current_time} by OEMS — Online Examination Management System.
-      </p>
+      <p style="margin:0 0 20px;color:#555;font-size:14px;">Best of luck!</p>
+      <p style="margin:0 0 4px;color:#333;font-size:14px;"><strong>Regards,</strong></p>
+      <p style="margin:0;color:#555;font-size:14px;">OEMS Examination Team</p>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:12px 24px;border-top:1px solid #f0f0f0;text-align:center;">
+      <p style="margin:0;font-size:11px;color:#aaa;">Ref ID: {ref_id}</p>
     </td>
   </tr>
 </table>
