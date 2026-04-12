@@ -57,13 +57,11 @@ def get_db_connection():
     return db_pool.get_connection()
 
 # ── Ollama Config ──
-OLLAMA_URL   = os.environ.get("OLLAMA_URL")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL")
+OLLAMA_URL   = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
 print(f"[OEMS] Ollama endpoint: {OLLAMA_URL} | Model: {OLLAMA_MODEL}")
 
 # ── Campus + Browser Helpers ──
-# Campus IP ranges — .env mein CAMPUS_IP_RANGES="10.104.242,192.168.1." set karo
-# Multiple ranges comma se separate karo
 _raw_ip = os.environ.get("CAMPUS_IP_RANGES", "10.104.242")
 CAMPUS_IP_RANGES = [ip.strip() for ip in _raw_ip.split(",") if ip.strip()]
 
@@ -79,7 +77,6 @@ def is_campus_ip():
 
 # ── First Name Helper ──
 def get_first_name(full_name):
-    """Full name se sirf pehla word — 'Anshuman Kumar Singh' → 'Anshuman'"""
     if not full_name:
         return "there"
     return full_name.strip().split()[0]
@@ -92,31 +89,23 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('CustomTitle', parent=styles['Title'], fontSize=22, textColor=colors.HexColor('#1e293b'), spaceAfter=6, fontName='Helvetica-Bold')
-    heading_style = ParagraphStyle('SectionHeading', parent=styles['Heading2'], fontSize=13, textColor=colors.HexColor('#4f46e5'), spaceBefore=14, spaceAfter=6, fontName='Helvetica-Bold')
-    normal_style = ParagraphStyle('CustomNormal', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#374151'), spaceAfter=4, leading=16)
-    muted_style = ParagraphStyle('Muted', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#6b7280'), spaceAfter=3)
+    title_style   = ParagraphStyle('CustomTitle',    parent=styles['Title'],   fontSize=22, textColor=colors.HexColor('#1e293b'), spaceAfter=6,  fontName='Helvetica-Bold')
+    heading_style = ParagraphStyle('SectionHeading', parent=styles['Heading2'],fontSize=13, textColor=colors.HexColor('#4f46e5'), spaceBefore=14,spaceAfter=6, fontName='Helvetica-Bold')
+    normal_style  = ParagraphStyle('CustomNormal',   parent=styles['Normal'],  fontSize=10, textColor=colors.HexColor('#374151'), spaceAfter=4,  leading=16)
+    muted_style   = ParagraphStyle('Muted',          parent=styles['Normal'],  fontSize=9,  textColor=colors.HexColor('#6b7280'), spaceAfter=3)
     story = []
     story.append(Paragraph("OEMS — Examination Result Report", title_style))
     story.append(HRFlowable(width="100%", thickness=2, color=colors.HexColor('#4f46e5'), spaceAfter=12))
     story.append(Paragraph("Student Details", heading_style))
-    student_name  = str(student.get('name', 'N/A'))
-    student_email = str(student.get('email', 'N/A') or 'Not provided')
-    exam_title    = str(exam.get('title', 'N/A'))
-    exam_date     = str(exam.get('start_time', 'N/A'))
-    admission_no  = str(student.get('admission_no', 'N/A'))
-    program       = str(student.get('program', 'N/A'))
-    branch        = str(student.get('branch', 'N/A'))
-    semester      = str(student.get('semester', 'N/A'))
     detail_data = [
         ['Field', 'Value'],
-        ['Student Name', student_name],
-        ['Admission No', admission_no],
-        ['Email', student_email],
-        ['Program (Branch) - Sem', f"{program} ({branch}) — Semester ({semester})"],
-        ['Course Name', exam_title],
-        ['Exam Date & Time', exam_date],
-        ['Report Generated', datetime.now().strftime('%d %b %Y, %I:%M %p')],
+        ['Student Name',    str(student.get('name', 'N/A'))],
+        ['Admission No',    str(student.get('admission_no', 'N/A'))],
+        ['Email',           str(student.get('email', 'N/A') or 'Not provided')],
+        ['Program (Branch) - Sem', f"{student.get('program','N/A')} ({student.get('branch','N/A')}) — Semester ({student.get('semester','N/A')})"],
+        ['Course Name',     str(exam.get('title', 'N/A'))],
+        ['Exam Date & Time',str(exam.get('start_time', 'N/A'))],
+        ['Report Generated',datetime.now().strftime('%d %b %Y, %I:%M %p')],
     ]
     detail_table = Table(detail_data, colWidths=[5*cm, 12*cm])
     detail_table.setStyle(TableStyle([
@@ -131,13 +120,11 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
     story.append(Spacer(1, 16))
     story.append(Paragraph("Question-wise Analysis", heading_style))
     for idx, ans in enumerate(answers, 1):
-        q_text      = str(ans.get('question_text', 'N/A'))
-        student_ans = str(ans.get('student_answer', '') or '').strip()
-        q_marks     = ans.get('marks', 0)
-        score       = ans.get('score', 0) or 0
-        feedback    = str(ans.get('feedback', 'Pending evaluation') or 'Pending evaluation')
-        if not student_ans:
-            student_ans = 'Not Answered'
+        q_text = str(ans.get('question_text','N/A'))
+        student_ans = str(ans.get('student_answer','') or '').strip() or 'Not Answered'
+        q_marks = ans.get('marks', 0)
+        score   = ans.get('score', 0) or 0
+        feedback= str(ans.get('feedback','Pending evaluation') or 'Pending evaluation')
         q_data = [
             [Paragraph(f'<b>Q{idx}.</b> {q_text}', normal_style), ''],
             ['Student Answer:', Paragraph(student_ans, normal_style)],
@@ -156,18 +143,12 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
         story.append(Spacer(1, 8))
     story.append(PageBreak())
     story.append(Paragraph("Performance Summary", heading_style))
-    total_q       = len(answers)
-    attempted     = sum(1 for a in answers if str(a.get('student_answer', '') or '').strip())
-    not_attempted = total_q - attempted
-    max_marks     = sum(a.get('marks', 0) for a in answers)
-    pct           = round(percentage, 1)
-    if pct >= 90:   grade = 'O (Outstanding)'
-    elif pct >= 75: grade = 'A (Excellent)'
-    elif pct >= 60: grade = 'B (Good)'
-    elif pct >= 45: grade = 'C (Average)'
-    elif pct >= 35: grade = 'D (Pass)'
-    else:           grade = 'F (Fail)'
-    summary_data = [['Metric','Value'],['Total Questions',str(total_q)],['Attempted',str(attempted)],['Not Attempted',str(not_attempted)],['Total Score',f'{total_score} / {max_marks}'],['Percentage',f'{pct}%'],['Grade',grade]]
+    total_q  = len(answers)
+    attempted= sum(1 for a in answers if str(a.get('student_answer','') or '').strip())
+    max_marks= sum(a.get('marks',0) for a in answers)
+    pct      = round(percentage, 1)
+    grade    = 'O (Outstanding)' if pct>=90 else 'A (Excellent)' if pct>=75 else 'B (Good)' if pct>=60 else 'C (Average)' if pct>=45 else 'D (Pass)' if pct>=35 else 'F (Fail)'
+    summary_data = [['Metric','Value'],['Total Questions',str(total_q)],['Attempted',str(attempted)],['Not Attempted',str(total_q-attempted)],['Total Score',f'{total_score} / {max_marks}'],['Percentage',f'{pct}%'],['Grade',grade]]
     summary_table = Table(summary_data, colWidths=[8*cm, 9*cm])
     summary_table.setStyle(TableStyle([
         ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#4f46e5')),('TEXTCOLOR',(0,0),(-1,0),colors.white),
@@ -179,15 +160,11 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
     story.append(summary_table)
     story.append(Spacer(1, 16))
     story.append(Paragraph("Performance Feedback", heading_style))
-    if pct >= 75:
-        overall_fb = f"Excellent performance! The student demonstrated strong understanding of the subject matter, scoring {pct}%. Keep up the great work."
-    elif pct >= 50:
-        overall_fb = f"Good attempt. The student scored {pct}% showing adequate understanding. Review the questions where marks were deducted to improve further."
-    elif pct >= 35:
-        overall_fb = f"The student scored {pct}%. While the basic concepts are understood, more practice and deeper study of the subject is recommended."
-    else:
-        overall_fb = f"The student scored {pct}%. Significant improvement is needed. Please review the course material thoroughly and seek guidance."
-    fb_table = Table([[Paragraph(overall_fb, normal_style)]], colWidths=[17*cm])
+    if pct>=75: fb = f"Excellent performance! The student scored {pct}% demonstrating strong understanding. Keep it up."
+    elif pct>=50: fb = f"Good attempt. The student scored {pct}%. Review deducted questions to improve further."
+    elif pct>=35: fb = f"The student scored {pct}%. Basic concepts understood but more practice needed."
+    else:         fb = f"The student scored {pct}%. Significant improvement needed. Please review all course material."
+    fb_table = Table([[Paragraph(fb, normal_style)]], colWidths=[17*cm])
     fb_table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#eef2ff')),('BORDER',(0,0),(-1,-1),1,colors.HexColor('#c7d2fe')),('PADDING',(0,0),(-1,-1),12)]))
     story.append(fb_table)
     story.append(Spacer(1, 20))
@@ -203,14 +180,8 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
 # AI EVALUATION ENGINE — Ollama
 # ================================================================
 def evaluate_answer(question, student_answer, max_marks):
-    """
-    Ollama se theory answer evaluate karo.
-    - Model answer ki zaroorat nahi — LLM khud judge karta hai
-    - Returns: (score float, feedback str)
-    """
     if not student_answer or len(student_answer.strip()) < 5:
         return 0, "Answer too short or not provided."
-
     prompt = f"""You are a strict but fair academic examiner evaluating a student's answer.
 
 Question: {question}
@@ -228,26 +199,12 @@ Instructions:
 Respond in EXACTLY this format (nothing else):
 SCORE: <number>
 FEEDBACK: <one line>"""
-
     try:
-        resp = requests.post(
-            OLLAMA_URL,
-            json={
-                "model":  OLLAMA_MODEL,
-                "prompt": prompt,
-                "stream": False,
-                "options": {"temperature": 0.1, "num_predict": 60}
-            },
-            timeout=60
-        )
+        resp = requests.post(OLLAMA_URL, json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False, "options": {"temperature": 0.1, "num_predict": 60}}, timeout=60)
         resp.raise_for_status()
         raw = resp.json().get("response", "").strip()
-        print(f"[Ollama] Raw response: {raw!r}")
-
-        # Parse SCORE and FEEDBACK
-        score    = 0.0
+        score = 0.0
         feedback = "Evaluated by AI."
-
         for line in raw.splitlines():
             line = line.strip()
             if line.upper().startswith("SCORE:"):
@@ -258,18 +215,13 @@ FEEDBACK: <one line>"""
                     score = 0.0
             elif line.upper().startswith("FEEDBACK:"):
                 feedback = line.split(":", 1)[1].strip()
-
-        print(f"[Ollama] Q='{question[:40]}...' → {score}/{max_marks} | {feedback}")
+        print(f"[Ollama] → {score}/{max_marks} | {feedback}")
         return score, feedback
-
     except requests.exceptions.ConnectionError:
-        print("[Ollama] ERROR: Ollama server not running! Start with: ollama serve")
         return 0, "Evaluation failed — Ollama server not reachable."
     except requests.exceptions.Timeout:
-        print("[Ollama] ERROR: Request timed out (60s)")
         return 0, "Evaluation timed out. Please retry."
     except Exception as e:
-        print(f"[Ollama] ERROR: {e}")
         return 0, f"Evaluation error: {str(e)[:50]}"
 
 # ── Background Evaluation Thread ──
@@ -278,113 +230,91 @@ def run_background_evaluation(student_id, exam_id, app_context):
         try:
             conn   = get_db_connection()
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("""
-                SELECT a.id, a.answer, q.question_text, q.marks, q.question_type
+            cursor.execute("""SELECT a.id, a.answer, q.question_text, q.marks, q.question_type
                 FROM answers a JOIN questions q ON a.question_id = q.id
-                WHERE a.student_id = %s AND a.exam_id = %s AND q.question_type = 'theory' AND a.score IS NULL
+                WHERE a.student_id=%s AND a.exam_id=%s AND q.question_type='theory' AND a.score IS NULL
             """, (student_id, exam_id))
             theory_answers = cursor.fetchall()
-            print(f"[BG Eval] Student {student_id}, Exam {exam_id} — {len(theory_answers)} answers")
-            for i, ans in enumerate(theory_answers):
+            for ans in theory_answers:
                 student_answer = (ans['answer'] or '').strip()
                 if not student_answer or len(student_answer) < 10:
                     score, feedback = 0, "No answer submitted or too short."
                 else:
                     score, feedback = evaluate_answer(ans['question_text'], student_answer, ans['marks'])
                 cursor.execute("UPDATE answers SET score=%s, feedback=%s WHERE id=%s", (round(score, 1), feedback, ans['id']))
-                print(f"[BG Eval] #{ans['id']} → {score}/{ans['marks']}")
             conn.commit()
-            cursor.execute("SELECT COALESCE(SUM(a.score), 0) AS total FROM answers a WHERE a.student_id = %s AND a.exam_id = %s", (student_id, exam_id))
+            cursor.execute("SELECT COALESCE(SUM(a.score),0) AS total FROM answers a WHERE a.student_id=%s AND a.exam_id=%s", (student_id, exam_id))
             total_score = float(cursor.fetchone()['total'] or 0)
-            cursor.execute("UPDATE results SET total_score = %s, submission_status = 'Evaluated' WHERE student_id = %s AND exam_id = %s", (round(total_score, 2), student_id, exam_id))
+            cursor.execute("UPDATE results SET total_score=%s, submission_status='Evaluated' WHERE student_id=%s AND exam_id=%s", (round(total_score, 2), student_id, exam_id))
             conn.commit()
-            print(f"[BG Eval] Results updated — Total: {total_score}")
-            cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
+            cursor.execute("SELECT * FROM students WHERE id=%s", (student_id,))
             student = cursor.fetchone()
-            cursor.execute("SELECT * FROM exams WHERE id = %s", (exam_id,))
+            cursor.execute("SELECT * FROM exams WHERE id=%s", (exam_id,))
             exam = cursor.fetchone()
-            cursor.execute("""SELECT q.question_text, q.marks, q.question_type, a.answer AS student_answer, a.score, a.feedback FROM answers a JOIN questions q ON a.question_id = q.id WHERE a.student_id = %s AND a.exam_id = %s ORDER BY q.id""", (student_id, exam_id))
+            cursor.execute("""SELECT q.question_text, q.marks, q.question_type, a.answer AS student_answer, a.score, a.feedback
+                FROM answers a JOIN questions q ON a.question_id=q.id WHERE a.student_id=%s AND a.exam_id=%s ORDER BY q.id""", (student_id, exam_id))
             all_answers = cursor.fetchall()
             cursor.close()
             conn.close()
             for ans in all_answers:
-                if ans['score']          is None: ans['score']         = 0
-                if not ans['feedback']:           ans['feedback']       = 'Evaluated'
-                if not ans['student_answer']:     ans['student_answer'] = ''
+                if ans['score']         is None: ans['score']         = 0
+                if not ans['feedback']:          ans['feedback']       = 'Evaluated'
+                if not ans['student_answer']:    ans['student_answer'] = ''
             max_marks  = sum(a['marks'] for a in all_answers)
             percentage = (total_score / max_marks * 100) if max_marks > 0 else 0
-            pdf_bytes = generate_result_pdf(student, exam, all_answers, total_score, percentage)
+            pdf_bytes  = generate_result_pdf(student, exam, all_answers, total_score, percentage)
             student_email = student.get('email')
             if student_email and is_valid_email(student_email):
                 send_result_email(student, exam, total_score, percentage, pdf_bytes)
-            else:
-                print(f"[BG Eval] No email — skipped")
         except Exception as e:
             print(f"[BG Eval] ERROR: {e}")
-            import traceback
-            traceback.print_exc()
+            import traceback; traceback.print_exc()
 
 
-# ============================================================
-# EMAIL FUNCTIONS — EduSkills style (clean, minimal)
-# ============================================================
-
-# ── Result Email with PDF ──
+# ================================================================
+# EMAIL FUNCTIONS
+# ================================================================
 def send_result_email(student, exam, total_score, percentage, pdf_bytes):
     from email.mime.base import MIMEBase
     from email import encoders
     try:
-        student_name  = student.get('name', 'Student')
-        student_email = student.get('email')
-        exam_title    = exam.get('title', 'Exam')
-        first_name    = get_first_name(student_name)
-        pct = round(percentage, 1)
+        first_name   = get_first_name(student.get('name','Student'))
+        student_email= student.get('email')
+        exam_title   = exam.get('title','Exam')
+        pct          = round(percentage, 1)
         result_word  = "PASS" if pct >= 35 else "FAIL"
         result_color = "#2e7d32" if pct >= 35 else "#c62828"
+        ref_id = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = MIMEMultipart('mixed')
         msg['From']    = formataddr(('OEMS Examination Team', EMAIL_CONFIG['SENDER_EMAIL']))
         msg['To']      = student_email
         msg['Subject'] = f"Exam Result: {exam_title}"
-        ref_id = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         html = f"""
 <html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;margin:0;">
 <table align="center" width="100%" style="max-width:500px;background:#fff;border-radius:8px;border:1px solid #e0e0e0;margin:0 auto;border-collapse:collapse;">
-  <tr>
-    <td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #c8e6c9;">
-      <p style="margin:0;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;">OEMS Examination Team</p>
-      <h2 style="margin:4px 0 0;color:#1e293b;font-size:20px;font-weight:700;">Exam Result Published</h2>
-    </td>
-  </tr>
-  <tr>
-    <td style="padding:28px 24px;">
-      <p style="margin:0 0 16px;color:#333;font-size:15px;">Hi <strong>{first_name}</strong>,</p>
-      <p style="margin:0 0 16px;color:#555;font-size:14px;line-height:1.6;">Your result for <strong>{exam_title}</strong> has been evaluated.</p>
-      <table width="100%" style="background:#f8fafc;border-radius:6px;border:1px solid #e0e0e0;margin-bottom:20px;border-collapse:collapse;">
-        <tr>
-          <td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;width:50%;">Total Score</td>
-          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;text-align:right;"><strong>{total_score}</strong></td>
-        </tr>
-        <tr>
-          <td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;">Percentage</td>
-          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;text-align:right;"><strong>{pct}%</strong></td>
-        </tr>
-        <tr>
-          <td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;">Result</td>
-          <td style="padding:10px 14px;font-size:14px;text-align:right;"><strong style="color:{result_color};">{result_word}</strong></td>
-        </tr>
-      </table>
-      <p style="margin:0 0 20px;font-size:13px;color:#888;line-height:1.5;">Detailed question-wise analysis is attached as a PDF report.</p>
-      <p style="margin:0 0 4px;color:#333;font-size:14px;"><strong>Regards,</strong></p>
-      <p style="margin:0;color:#555;font-size:14px;">OEMS Examination Team</p>
-    </td>
-  </tr>
-  <tr>
-    <td style="padding:12px 24px;border-top:1px solid #f0f0f0;text-align:center;">
-      <p style="margin:0;font-size:11px;color:#aaa;">Ref ID: {ref_id}</p>
-    </td>
-  </tr>
-</table>
-</body></html>"""
+  <tr><td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #c8e6c9;">
+    <p style="margin:0;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;">OEMS Examination Team</p>
+    <h2 style="margin:4px 0 0;color:#1e293b;font-size:20px;font-weight:700;">Exam Result Published</h2>
+  </td></tr>
+  <tr><td style="padding:28px 24px;">
+    <p style="margin:0 0 16px;color:#333;font-size:15px;">Hi <strong>{first_name}</strong>,</p>
+    <p style="margin:0 0 16px;color:#555;font-size:14px;line-height:1.6;">Your result for <strong>{exam_title}</strong> has been evaluated.</p>
+    <table width="100%" style="background:#f8fafc;border-radius:6px;border:1px solid #e0e0e0;margin-bottom:20px;border-collapse:collapse;">
+      <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;width:50%;">Total Score</td>
+          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;text-align:right;"><strong>{total_score}</strong></td></tr>
+      <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;">Percentage</td>
+          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;text-align:right;"><strong>{pct}%</strong></td></tr>
+      <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;">Result</td>
+          <td style="padding:10px 14px;font-size:14px;text-align:right;"><strong style="color:{result_color};">{result_word}</strong></td></tr>
+    </table>
+    <p style="margin:0 0 20px;font-size:13px;color:#888;line-height:1.5;">Detailed question-wise analysis is attached as a PDF report.</p>
+    <p style="margin:0 0 4px;color:#333;font-size:14px;"><strong>Regards,</strong></p>
+    <p style="margin:0;color:#555;font-size:14px;">OEMS Examination Team</p>
+  </td></tr>
+  <tr><td style="padding:12px 24px;border-top:1px solid #f0f0f0;text-align:center;">
+    <p style="margin:0;font-size:11px;color:#aaa;">Ref ID: {ref_id}</p>
+  </td></tr>
+</table></body></html>"""
         msg.attach(MIMEText(html, 'html'))
         pdf_part = MIMEBase('application', 'octet-stream')
         pdf_part.set_payload(pdf_bytes)
@@ -413,13 +343,12 @@ def home():
 def student_login():
     if request.method == "POST":
         admission_no = request.form.get("admission_no")
-        password = request.form.get("password")
-        conn = get_db_connection()
+        password     = request.form.get("password")
+        conn   = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM students WHERE admission_no=%s", (admission_no,))
         student = cursor.fetchone()
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
         if student and check_password_hash(student["password"], password):
             session["student_id"]   = student["id"]
             session["role"]         = "student"
@@ -429,8 +358,7 @@ def student_login():
             session["branch"]       = student["branch"]
             session["semester"]     = student["semester"]
             return redirect("/student")
-        else:
-            return "Invalid Admission Number or Password ❌"
+        return "Invalid Admission Number or Password ❌"
     return render_template("student_login.html")
 
 # ── ADMIN LOGIN
@@ -439,20 +367,18 @@ def admin_login():
     if request.method == "POST":
         admin_id = request.form.get("admin_id")
         password = request.form.get("password")
-        conn = get_db_connection()
+        conn   = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT * FROM admins WHERE admin_id=%s", (admin_id,))
         admin = cursor.fetchone()
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
         if admin and check_password_hash(admin["password"], password):
             session["admin_id"]     = admin["admin_id"]
             session["role"]         = "admin"
             session["admin_name"]   = admin["name"]
             session["admin_branch"] = admin["branch"]
             return redirect("/admin")
-        else:
-            return "Invalid Admin ID or Password ❌"
+        return "Invalid Admin ID or Password ❌"
     return render_template("admin_login.html")
 
 # ── LOGIN REQUIRED DECORATOR
@@ -460,12 +386,8 @@ def login_required(role):
     def wrapper(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            if role == "admin":
-                if "admin_id" not in session:
-                    return redirect("/")
-            elif role == "student":
-                if "student_id" not in session:
-                    return redirect("/")
+            if role == "admin"   and "admin_id"   not in session: return redirect("/")
+            if role == "student" and "student_id" not in session: return redirect("/")
             return f(*args, **kwargs)
         return decorated_function
     return wrapper
@@ -475,28 +397,19 @@ def login_required(role):
 @login_required("admin")
 def admin_dashboard():
     admin_branch = session.get("admin_branch")
-    conn = get_db_connection()
+    conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     if admin_branch == "ALL":
-        cursor.execute("SELECT * FROM exams")
-        exams = cursor.fetchall()
-        cursor.execute("SELECT COUNT(*) AS total FROM students")
-        total_students = cursor.fetchone()["total"]
-        cursor.execute("SELECT COUNT(*) AS total FROM exams WHERE status='publish'")
-        active_exams = cursor.fetchone()["total"]
-        cursor.execute("SELECT COUNT(*) AS total FROM answers WHERE score IS NULL")
-        pending_ai_checks = cursor.fetchone()["total"]
+        cursor.execute("SELECT * FROM exams"); exams = cursor.fetchall()
+        cursor.execute("SELECT COUNT(*) AS total FROM students");            total_students    = cursor.fetchone()["total"]
+        cursor.execute("SELECT COUNT(*) AS total FROM exams WHERE status='publish'"); active_exams = cursor.fetchone()["total"]
+        cursor.execute("SELECT COUNT(*) AS total FROM answers WHERE score IS NULL");  pending_ai_checks = cursor.fetchone()["total"]
     else:
-        cursor.execute("SELECT * FROM exams WHERE branch = %s", (admin_branch,))
-        exams = cursor.fetchall()
-        cursor.execute("SELECT COUNT(*) AS total FROM students WHERE branch = %s", (admin_branch,))
-        total_students = cursor.fetchone()["total"]
-        cursor.execute("SELECT COUNT(*) AS total FROM exams WHERE status='publish' AND branch = %s", (admin_branch,))
-        active_exams = cursor.fetchone()["total"]
-        cursor.execute("SELECT COUNT(a.id) AS total FROM answers a JOIN exams e ON a.exam_id = e.id WHERE a.score IS NULL AND e.branch = %s", (admin_branch,))
-        pending_ai_checks = cursor.fetchone()["total"]
-    cursor.close()
-    conn.close()
+        cursor.execute("SELECT * FROM exams WHERE branch=%s", (admin_branch,)); exams = cursor.fetchall()
+        cursor.execute("SELECT COUNT(*) AS total FROM students WHERE branch=%s", (admin_branch,));           total_students    = cursor.fetchone()["total"]
+        cursor.execute("SELECT COUNT(*) AS total FROM exams WHERE status='publish' AND branch=%s", (admin_branch,)); active_exams = cursor.fetchone()["total"]
+        cursor.execute("SELECT COUNT(a.id) AS total FROM answers a JOIN exams e ON a.exam_id=e.id WHERE a.score IS NULL AND e.branch=%s", (admin_branch,)); pending_ai_checks = cursor.fetchone()["total"]
+    cursor.close(); conn.close()
     return render_template("admin_dashboard.html", exams=exams, total_students=total_students, active_exams=active_exams, pending_ai_checks=pending_ai_checks, admin_branch=admin_branch)
 
 # ── STUDENT MANAGER
@@ -504,43 +417,145 @@ def admin_dashboard():
 @login_required("admin")
 def students():
     admin_branch = session.get("admin_branch")
-    conn = get_db_connection()
+    conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     if admin_branch == "ALL":
         cursor.execute("SELECT * FROM students ORDER BY program, semester, name, admission_no")
     else:
-        cursor.execute("SELECT * FROM students WHERE branch = %s ORDER BY program, semester, name, admission_no", (admin_branch,))
+        cursor.execute("SELECT * FROM students WHERE branch=%s ORDER BY program, semester, name, admission_no", (admin_branch,))
     students = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    cursor.close(); conn.close()
     return render_template("student_manager.html", students=students, admin_branch=admin_branch)
 
-# ── ADD STUDENT
+# ── ADD STUDENT (Single + Bulk CSV + Welcome Email)
 @app.route("/add_student", methods=["GET", "POST"])
 @login_required("admin")
 def add_student():
     admin_branch = session.get("admin_branch")
     if request.method == "POST":
-        name         = request.form["name"]
-        admission_no = request.form["admission_no"]
-        program      = request.form["program"]
-        semester     = request.form["semester"]
-        branch       = request.form.get("branch") if admin_branch == "ALL" else admin_branch
-        hashed_password = generate_password_hash("OEMS@12345")
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO students (name, admission_no, program, branch, semester, password) VALUES (%s,%s,%s,%s,%s,%s)", (name, admission_no, program, branch, semester, hashed_password))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return redirect("/student_manager")
+        mode = request.form.get("mode", "single")  # single | bulk
+
+        if mode == "bulk":
+            # ── BULK CSV ADD ──
+            import csv, io as _io
+            file      = request.files.get("csv_file")
+            program   = request.form.get("program", "")
+            semester  = request.form.get("semester", "")
+            branch    = request.form.get("branch") if admin_branch == "ALL" else admin_branch
+            send_mail = request.form.get("send_welcome_email") == "1"
+
+            if not file or not file.filename.endswith(".csv"):
+                return render_template("add_student.html", admin_branch=admin_branch,
+                    bulk_error="Please upload a valid .csv file.")
+
+            stream  = _io.StringIO(file.stream.read().decode("utf-8-sig"), newline=None)
+            reader  = csv.DictReader(stream)
+            headers = set(h.strip().lower() for h in (reader.fieldnames or []))
+
+            if not {"name", "admission_no"}.issubset(headers):
+                return render_template("add_student.html", admin_branch=admin_branch,
+                    bulk_error="CSV missing required columns: name, admission_no")
+
+            conn   = get_db_connection()
+            cursor = conn.cursor()
+            added = 0; skipped = 0; skip_list = []; mail_queue = []
+            default_pass = "OEMS@12345"
+
+            for row in reader:
+                row     = {k.strip().lower(): v.strip() for k, v in row.items()}
+                s_name  = row.get("name","").strip()
+                s_adm   = row.get("admission_no","").strip()
+                s_email = row.get("email","").strip()
+                s_prog  = row.get("program", program).strip() or program
+                s_sem   = row.get("semester", semester).strip() or semester
+                s_br    = row.get("branch",  branch).strip()  or branch
+
+                if not s_name or not s_adm:
+                    skipped += 1; skip_list.append(f"{s_adm or '?'} — missing name/admission_no"); continue
+
+                cursor.execute("SELECT id FROM students WHERE admission_no=%s", (s_adm,))
+                if cursor.fetchone():
+                    skipped += 1; skip_list.append(f"{s_adm} — already exists"); continue
+
+                hashed = generate_password_hash(default_pass)
+                cursor.execute("INSERT INTO students (name, admission_no, program, branch, semester, email, password) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (s_name, s_adm, s_prog, s_br, s_sem, s_email or None, hashed))
+                added += 1
+                if send_mail and s_email and is_valid_email(s_email):
+                    mail_queue.append((s_email, s_name, s_adm, default_pass, s_prog, s_br, s_sem))
+
+            conn.commit(); cursor.close(); conn.close()
+
+            if mail_queue:
+                def _send_all(q):
+                    for em, nm, adm, pw, prog, br, sem in q:
+                        try: email_service.send_welcome_email(em, nm, adm, pw, prog, br, sem)
+                        except Exception as ex: print(f"[BulkMail] {em}: {ex}")
+                threading.Thread(target=_send_all, args=(mail_queue,), daemon=True).start()
+
+            return render_template("add_student.html", admin_branch=admin_branch,
+                bulk_result={"added": added, "skipped": skipped, "skip_list": skip_list, "mailed": len(mail_queue) if send_mail else 0})
+
+        else:
+            # ── SINGLE ADD ──
+            name         = request.form["name"]
+            admission_no = request.form["admission_no"]
+            program      = request.form["program"]
+            semester     = request.form["semester"]
+            email        = request.form.get("email", "").strip()
+            branch       = request.form.get("branch") if admin_branch == "ALL" else admin_branch
+            default_pass = "OEMS@12345"
+            hashed_password = generate_password_hash(default_pass)
+
+            conn   = get_db_connection()
+            cursor = conn.cursor()
+            # Duplicate check
+            cursor.execute("SELECT id FROM students WHERE admission_no=%s", (admission_no,))
+            if cursor.fetchone():
+                cursor.close(); conn.close()
+                return render_template("add_student.html", admin_branch=admin_branch,
+                    single_error=f"Admission number {admission_no} already exists.")
+
+            cursor.execute("INSERT INTO students (name, admission_no, program, branch, semester, email, password) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (name, admission_no, program, branch, semester, email or None, hashed_password))
+            conn.commit(); cursor.close(); conn.close()
+
+            if email and is_valid_email(email):
+                send_email_async(email_service.send_welcome_email, email, name, admission_no, default_pass, program, branch, semester)
+
+            return redirect("/student_manager")
+
     return render_template("add_student.html", admin_branch=admin_branch)
+
+# ── RESEND CREDENTIALS (Admin — existing student ko email bhejo)
+@app.route("/resend_credentials/<int:student_id>", methods=["POST"])
+@login_required("admin")
+def resend_credentials(student_id):
+    conn   = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM students WHERE id=%s", (student_id,))
+    student = cursor.fetchone()
+    cursor.close(); conn.close()
+
+    if not student:
+        return jsonify({"success": False, "message": "Student not found"}), 404
+
+    email = student.get("email")
+    if not email or not is_valid_email(email):
+        return jsonify({"success": False, "message": "Student has no valid email on record"}), 400
+
+    send_email_async(
+        email_service.send_welcome_email,
+        email, student["name"], student["admission_no"],
+        "OEMS@12345", student["program"], student["branch"], student["semester"]
+    )
+    return jsonify({"success": True, "message": f"Credentials resent to {email}"})
 
 # ── EDIT PROFILE (Student)
 @app.route("/edit_profile", methods=["GET", "POST"])
 @login_required("student")
 def edit_profile():
-    conn = get_db_connection()
+    conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     student_id = session["student_id"]
     if request.method == "POST":
@@ -553,15 +568,13 @@ def edit_profile():
         conn.commit()
         cursor.execute("SELECT email FROM students WHERE id=%s", (student_id,))
         session["email"] = cursor.fetchone()["email"]
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
         return redirect("/student")
     cursor.execute("SELECT * FROM students WHERE id=%s", (student_id,))
     user = cursor.fetchone()
     session["program"]  = user["program"]
     session["semester"] = user["semester"]
-    cursor.close()
-    conn.close()
+    cursor.close(); conn.close()
     return render_template("edit_profile.html", user=user)
 
 # ── CREATE EXAM
@@ -582,14 +595,14 @@ def create_exam():
         branch        = request.form.get("branch") if admin_branch == "ALL" else admin_branch
         conn   = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO exams (title, exam_type, total_marks, program, branch, semester, start_time, duration, status, browser_mode, ai_proctoring) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'draft', %s, %s)", (title, exam_type, total_marks, program, branch, semester, start_time, duration, browser_mode, ai_proctoring))
-        conn.commit()
-        cursor.close()
-        conn.close()
+        cursor.execute("INSERT INTO exams (title, exam_type, total_marks, program, branch, semester, start_time, duration, status, browser_mode, ai_proctoring) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'draft',%s,%s)",
+            (title, exam_type, total_marks, program, branch, semester, start_time, duration, browser_mode, ai_proctoring))
+        conn.commit(); cursor.close(); conn.close()
         return redirect("/admin")
     return render_template("create_exam.html", admin_branch=admin_branch)
 
-# ── ADD QUESTION
+
+# ── ADD QUESTION (FIXED — MCQ/MSQ bug resolved)
 @app.route("/add_question/<int:exam_id>", methods=["GET", "POST"])
 @login_required("admin")
 def add_question(exam_id):
@@ -600,44 +613,55 @@ def add_question(exam_id):
     cursor.execute("SELECT COUNT(*) as total FROM questions WHERE exam_id=%s", (exam_id,))
     question_count = cursor.fetchone()["total"]
     max_limit = 20 if exam["exam_type"] == "theory" else 50
+
     if request.method == "POST":
         if question_count >= max_limit:
-            cursor.close()
-            conn.close()
+            cursor.close(); conn.close()
             return "Maximum question limit reached ❌"
-        question_text = request.form.get("question_text")
-        try:
-            marks = int(request.form.get("marks", 0))
-        except:
-            marks = 0
+
+        question_text = request.form.get("question_text", "").strip()
+        try:    marks = int(request.form.get("marks", 0))
+        except: marks = 0
         question_type = request.form.get("question_type", "theory").lower()
-        optionA = request.form.get("optionA")
-        optionB = request.form.get("optionB")
-        optionC = request.form.get("optionC")
-        optionD = request.form.get("optionD")
+
+        optionA = request.form.get("optionA", "").strip() or None
+        optionB = request.form.get("optionB", "").strip() or None
+        optionC = request.form.get("optionC", "").strip() or None
+        optionD = request.form.get("optionD", "").strip() or None
+
         if question_type == "theory":
             correct_answer = request.form.get("correct_answer", "").strip()
             if not correct_answer:
-                cursor.close()
-                conn.close()
+                cursor.close(); conn.close()
                 return "Provide answer outline for theory ❌"
-        else:
-            selected = request.form.getlist("correct_answer")
+
+        elif question_type == "mcq":
+            # MCQ: radio button — single value, name="correct_answer" value="optionA/B/C/D"
+            selected = request.form.get("correct_answer", "").strip()
             if not selected:
-                cursor.close()
-                conn.close()
-                return "Select at least one correct answer ❌"
-            correct_answer = ",".join(sorted(selected))
-        cursor.execute("INSERT INTO questions (exam_id, question_text, question_type, optionA, optionB, optionC, optionD, correct_answer, marks) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)", (exam_id, question_text, question_type, optionA, optionB, optionC, optionD, correct_answer, marks))
-        conn.commit()
-        cursor.close()
-        conn.close()
+                cursor.close(); conn.close()
+                return "Select the correct answer for MCQ ❌"
+            correct_answer = selected  # e.g. "optionA"
+
+        else:
+            # MSQ: checkboxes — multiple values
+            selected_list = request.form.getlist("correct_answer")
+            if not selected_list:
+                cursor.close(); conn.close()
+                return "Select at least one correct answer for MSQ ❌"
+            correct_answer = ",".join(sorted(selected_list))  # e.g. "optionA,optionC"
+
+        cursor.execute(
+            "INSERT INTO questions (exam_id, question_text, question_type, optionA, optionB, optionC, optionD, correct_answer, marks) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (exam_id, question_text, question_type, optionA, optionB, optionC, optionD, correct_answer, marks)
+        )
+        conn.commit(); cursor.close(); conn.close()
         return redirect(f"/add_question/{exam_id}")
-    cursor.close()
-    conn.close()
+
+    cursor.close(); conn.close()
     return render_template("add_question.html", exam=exam, question_count=question_count, max_limit=max_limit)
 
-# ── EDIT QUESTION
+# ── EDIT QUESTION (FIXED)
 @app.route("/edit_question/<int:question_id>", methods=["GET", "POST"])
 @login_required("admin")
 def edit_question(question_id):
@@ -646,33 +670,40 @@ def edit_question(question_id):
     cursor.execute("SELECT * FROM questions WHERE id=%s", (question_id,))
     question = cursor.fetchone()
     if not question:
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
         return "Question not found", 404
+
     if request.method == "POST":
-        question_text = request.form.get("question_text")
-        optionA = request.form.get("optionA")
-        optionB = request.form.get("optionB")
-        optionC = request.form.get("optionC")
-        optionD = request.form.get("optionD")
-        try:
-            marks = int(request.form.get("marks", 0))
-        except:
-            marks = 0
-        is_mcq = optionA or optionB or optionC or optionD
-        if is_mcq:
-            selected_options = request.form.getlist("correct_answer")
-            correct_answer = ",".join(selected_options) if selected_options else ""
+        question_text = request.form.get("question_text","").strip()
+        optionA = request.form.get("optionA","").strip() or None
+        optionB = request.form.get("optionB","").strip() or None
+        optionC = request.form.get("optionC","").strip() or None
+        optionD = request.form.get("optionD","").strip() or None
+        try:    marks = int(request.form.get("marks",0))
+        except: marks = 0
+
+        q_type = question.get("question_type","theory").lower()
+
+        if q_type == "theory":
+            correct_answer = request.form.get("correct_answer","").strip()
+        elif q_type == "mcq":
+            # Radio button: get single value
+            correct_answer = request.form.get("correct_answer","").strip()
         else:
-            correct_answer = request.form.get("correct_answer", "")
-        cursor.execute("UPDATE questions SET question_text=%s, optionA=%s, optionB=%s, optionC=%s, optionD=%s, correct_answer=%s, marks=%s WHERE id=%s", (question_text, optionA, optionB, optionC, optionD, correct_answer, marks, question_id))
+            # MSQ: checkboxes
+            selected_list  = request.form.getlist("correct_answer")
+            correct_answer = ",".join(sorted(selected_list)) if selected_list else ""
+
+        cursor.execute(
+            "UPDATE questions SET question_text=%s, optionA=%s, optionB=%s, optionC=%s, optionD=%s, correct_answer=%s, marks=%s WHERE id=%s",
+            (question_text, optionA, optionB, optionC, optionD, correct_answer, marks, question_id)
+        )
         conn.commit()
         exam_id = question["exam_id"]
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
         return redirect(f"/questions/{exam_id}")
-    cursor.close()
-    conn.close()
+
+    cursor.close(); conn.close()
     return render_template("edit_question.html", question=question)
 
 # ── DELETE QUESTION
@@ -683,14 +714,10 @@ def delete_question(question_id):
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT exam_id FROM questions WHERE id=%s", (question_id,))
     question = cursor.fetchone()
-    exam_id = question["exam_id"] if question else None
+    exam_id  = question["exam_id"] if question else None
     cursor.execute("DELETE FROM questions WHERE id=%s", (question_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
-    if exam_id:
-        return redirect(f"/questions/{exam_id}")
-    return redirect("/admin")
+    conn.commit(); cursor.close(); conn.close()
+    return redirect(f"/questions/{exam_id}") if exam_id else redirect("/admin")
 
 # ── DELETE EXAM
 @app.route("/delete_exam/<int:exam_id>", methods=["POST"])
@@ -698,13 +725,11 @@ def delete_question(question_id):
 def delete_exam(exam_id):
     conn   = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE answers FROM answers JOIN questions ON answers.question_id = questions.id WHERE questions.exam_id=%s", (exam_id,))
+    cursor.execute("DELETE answers FROM answers JOIN questions ON answers.question_id=questions.id WHERE questions.exam_id=%s", (exam_id,))
     cursor.execute("DELETE FROM results WHERE exam_id=%s", (exam_id,))
     cursor.execute("DELETE FROM questions WHERE exam_id=%s", (exam_id,))
     cursor.execute("DELETE FROM exams WHERE id=%s", (exam_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    conn.commit(); cursor.close(); conn.close()
     return redirect("/admin")
 
 # ── PUBLISH EXAM
@@ -720,23 +745,17 @@ def publish_exam(exam_id):
         if exam_data:
             exam_name, exam_date, duration, target_program, target_branch, target_semester = [str(x) for x in exam_data]
             cursor.execute("SELECT name, email FROM students WHERE program=%s AND branch=%s AND semester=%s", (target_program, target_branch, target_semester))
-            students_data = cursor.fetchall()
-            student_list = [{"name": row[0], "email": row[1]} for row in students_data]
+            student_list = [{"name": row[0], "email": row[1]} for row in cursor.fetchall()]
             if student_list:
-                def send_emails_async():
-                    try:
-                        result = email_service.send_bulk_exam_alerts(student_list, exam_name, exam_date, duration)
-                        print(f"Bulk email result: {result}")
-                    except Exception as e:
-                        print(f"Error sending bulk emails: {e}")
-                threading.Thread(target=send_emails_async).start()
+                def _send():
+                    try: email_service.send_bulk_exam_alerts(student_list, exam_name, exam_date, duration)
+                    except Exception as e: print(f"[BulkEmail] {e}")
+                threading.Thread(target=_send).start()
         conn.commit()
     except Exception as e:
-        print(f"Error publishing exam: {e}")
-        conn.rollback()
+        print(f"[Publish] Error: {e}"); conn.rollback()
     finally:
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
     return redirect("/admin")
 
 # ── UNPUBLISH EXAM
@@ -746,9 +765,7 @@ def unpublish_exam(exam_id):
     conn   = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE exams SET status='draft' WHERE id=%s", (exam_id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    conn.commit(); cursor.close(); conn.close()
     return redirect("/admin")
 
 # ── RESULTS SUMMARY (Admin)
@@ -759,12 +776,11 @@ def results_summary():
     conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     if admin_branch == "ALL":
-        cursor.execute("SELECT students.id AS student_id, students.name AS student_name, students.admission_no, students.program, students.branch, students.semester, exams.id AS exam_id, exams.title AS exam_title, results.total_score, results.submission_status FROM results JOIN students ON results.student_id = students.id JOIN exams ON results.exam_id = exams.id ORDER BY results.id DESC")
+        cursor.execute("SELECT students.id AS student_id, students.name AS student_name, students.admission_no, students.program, students.branch, students.semester, exams.id AS exam_id, exams.title AS exam_title, results.total_score, results.submission_status FROM results JOIN students ON results.student_id=students.id JOIN exams ON results.exam_id=exams.id ORDER BY results.id DESC")
     else:
-        cursor.execute("SELECT students.id AS student_id, students.name AS student_name, students.admission_no, students.program, students.branch, students.semester, exams.id AS exam_id, exams.title AS exam_title, results.total_score, results.submission_status FROM results JOIN students ON results.student_id = students.id JOIN exams ON results.exam_id = exams.id WHERE students.branch = %s ORDER BY results.id DESC", (admin_branch,))
+        cursor.execute("SELECT students.id AS student_id, students.name AS student_name, students.admission_no, students.program, students.branch, students.semester, exams.id AS exam_id, exams.title AS exam_title, results.total_score, results.submission_status FROM results JOIN students ON results.student_id=students.id JOIN exams ON results.exam_id=exams.id WHERE students.branch=%s ORDER BY results.id DESC", (admin_branch,))
     results_data = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    cursor.close(); conn.close()
     return render_template("results_summary.html", results=results_data, admin_branch=admin_branch)
 
 # ── RESULT DETAILS (Admin)
@@ -774,23 +790,19 @@ def result_details(student_id, exam_id):
     admin_branch = session.get("admin_branch")
     conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT branch FROM students WHERE id = %s", (student_id,))
+    cursor.execute("SELECT branch FROM students WHERE id=%s", (student_id,))
     student = cursor.fetchone()
     if not student:
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
         return "Student not found ❌", 404
     if admin_branch != "ALL" and student["branch"] != admin_branch:
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
         return "Access Denied 🚫", 403
-    cursor.execute("SELECT answers.id, questions.question_text, questions.marks, answers.answer AS student_answer, answers.score, answers.feedback FROM answers JOIN questions ON answers.question_id = questions.id WHERE answers.student_id=%s AND answers.exam_id=%s", (student_id, exam_id))
+    cursor.execute("SELECT answers.id, questions.question_text, questions.marks, answers.answer AS student_answer, answers.score, answers.feedback FROM answers JOIN questions ON answers.question_id=questions.id WHERE answers.student_id=%s AND answers.exam_id=%s", (student_id, exam_id))
     answers = cursor.fetchall()
     for a in answers:
-        if a['score'] is None:
-            a['score'] = 0
-    cursor.close()
-    conn.close()
+        if a['score'] is None: a['score'] = 0
+    cursor.close(); conn.close()
     return render_template("result_details.html", answers=answers)
 
 # ── VIEW QUESTIONS
@@ -801,8 +813,7 @@ def view_questions(exam_id):
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,))
     questions = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    cursor.close(); conn.close()
     return render_template("questions.html", questions=questions, exam_id=exam_id)
 
 # ── STUDENT DASHBOARD
@@ -811,21 +822,17 @@ def view_questions(exam_id):
 def student_dashboard():
     conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM students WHERE id = %s", (session.get("student_id"),))
+    cursor.execute("SELECT * FROM students WHERE id=%s", (session.get("student_id"),))
     student_info = cursor.fetchone()
     if not student_info:
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
         return "Student data not found. Please login again.", 404
     cursor.execute("SELECT * FROM exams WHERE program=%s AND branch=%s AND semester=%s AND status='publish'", (student_info["program"], student_info["branch"], student_info["semester"]))
     exams = cursor.fetchall()
-    cursor.execute("SELECT exam_id FROM results WHERE student_id = %s", (session.get("student_id"),))
-    attempted_rows = cursor.fetchall()
-    attempted_exam_ids = {row["exam_id"] for row in attempted_rows}
-    cursor.close()
-    conn.close()
-    now_time = datetime.now()
-    return render_template("student_dashboard.html", student=student_info, exams=exams, attempted_exam_ids=attempted_exam_ids, now_time=now_time, timedelta=timedelta)
+    cursor.execute("SELECT exam_id FROM results WHERE student_id=%s", (session.get("student_id"),))
+    attempted_exam_ids = {row["exam_id"] for row in cursor.fetchall()}
+    cursor.close(); conn.close()
+    return render_template("student_dashboard.html", student=student_info, exams=exams, attempted_exam_ids=attempted_exam_ids, now_time=datetime.now(), timedelta=timedelta)
 
 # ── START EXAM
 @app.route("/start_exam/<int:exam_id>")
@@ -836,45 +843,41 @@ def start_exam(exam_id):
     cursor.execute("SELECT * FROM exams WHERE id=%s", (exam_id,))
     exam = cursor.fetchone()
     if not exam:
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
         return "<script>alert('Exam not found!'); window.location.href='/student';</script>"
     exam_start = exam["start_time"]
     exam_end   = exam_start + timedelta(minutes=exam["duration"])
     now        = datetime.now()
     if now < exam_start:
-        cursor.close()
-        conn.close()
-        return f"<script>alert('Exam has not started yet. Starts at {exam_start.strftime('%I:%M %p')}'); window.location.href='/student';</script>"
+        cursor.close(); conn.close()
+        start_str = exam_start.strftime("%I:%M %p")
+        return f"<script>alert('Exam has not started yet. Starts at {start_str}'); window.location.href='/student';</script>"
     if now > exam_end:
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
         return "<script>alert('Exam time is over.'); window.location.href='/student';</script>"
     cursor.execute("SELECT id FROM results WHERE student_id=%s AND exam_id=%s", (session["student_id"], exam_id))
     if cursor.fetchone():
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
         return "<script>alert('Security Alert: You have already attempted this exam.'); window.location.href='/student';</script>"
     browser_mode  = exam.get("browser_mode", "any")
     ai_proctoring = bool(exam.get("ai_proctoring", 0))
     if browser_mode in ("secure_any", "secure_campus"):
         if not is_secure_browser():
-            cursor.close()
-            conn.close()
+            cursor.close(); conn.close()
             return render_template("secure_browser_required.html", exam=exam, mode=browser_mode)
     if browser_mode == "secure_campus":
         if not is_campus_ip():
-            cursor.close()
-            conn.close()
+            cursor.close(); conn.close()
             return render_template("campus_only.html", exam=exam, client_ip=request.remote_addr)
     cursor.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,))
     questions = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    cursor.close(); conn.close()
     random.shuffle(questions)
-    return render_template("start_exam.html", questions=questions, exam_id=exam_id, exam=exam, exam_start=exam_start.strftime("%Y-%m-%dT%H:%M:%S"), exam_end=exam_end.strftime("%Y-%m-%dT%H:%M:%S"), duration=exam["duration"], ai_proctoring=ai_proctoring)
+    return render_template("start_exam.html", questions=questions, exam_id=exam_id, exam=exam,
+        exam_start=exam_start.strftime("%Y-%m-%dT%H:%M:%S"), exam_end=exam_end.strftime("%Y-%m-%dT%H:%M:%S"),
+        duration=exam["duration"], ai_proctoring=ai_proctoring)
 
-# ── SUBMIT EXAM
+# ── SUBMIT EXAM (FIXED — MSQ match logic)
 @app.route("/submit_exam/<int:exam_id>", methods=["POST"])
 @login_required("student")
 def submit_exam(exam_id):
@@ -884,47 +887,53 @@ def submit_exam(exam_id):
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT id FROM results WHERE student_id=%s AND exam_id=%s", (student_id, exam_id))
     if cursor.fetchone():
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
         return render_template('already_submitted.html'), 400
     cursor.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,))
     questions   = cursor.fetchall()
     total_score = 0
     has_theory  = False
+
     for q in questions:
         q_type = q["question_type"].lower()
+
         if q_type == "mcq":
+            # Single choice — radio button value
             student_answer = answers_data.get(f"q{q['id']}", "").strip()
-            if student_answer == q["correct_answer"]:
-                score, feedback = q["marks"], "Correct answer"
-            else:
-                score, feedback = 0, "Incorrect or no answer"
+            score    = q["marks"] if student_answer == q["correct_answer"] else 0
+            feedback = "Correct answer" if score > 0 else "Incorrect or no answer"
             total_score += score
-            cursor.execute("INSERT INTO answers (student_id, exam_id, question_id, answer, score, feedback) VALUES (%s,%s,%s,%s,%s,%s)", (student_id, exam_id, q["id"], student_answer, score, feedback))
+            cursor.execute("INSERT INTO answers (student_id,exam_id,question_id,answer,score,feedback) VALUES (%s,%s,%s,%s,%s,%s)",
+                (student_id, exam_id, q["id"], student_answer, score, feedback))
+
         elif q_type == "msq":
-            student_answers_list = sorted(answers_data.getlist(f"q{q['id']}"))
-            student_answer = ", ".join(student_answers_list)
-            db_correct_str = ", ".join(sorted([a.strip() for a in (q["correct_answer"] or "").split(",") if a.strip()]))
-            if student_answer == db_correct_str and student_answer:
-                score, feedback = q["marks"], "Correct answers"
-            else:
-                score, feedback = 0, "Incorrect or partially correct"
+            # Multiple choice — checkbox values, sorted and joined
+            selected = sorted(answers_data.getlist(f"q{q['id']}"))
+            student_answer = ",".join(selected)
+            # DB stores sorted: "optionA,optionC" — match exactly
+            db_correct = ",".join(sorted([a.strip() for a in (q["correct_answer"] or "").split(",") if a.strip()]))
+            score    = q["marks"] if (student_answer == db_correct and student_answer) else 0
+            feedback = "Correct answers" if score > 0 else "Incorrect or partially correct"
             total_score += score
-            cursor.execute("INSERT INTO answers (student_id, exam_id, question_id, answer, score, feedback) VALUES (%s,%s,%s,%s,%s,%s)", (student_id, exam_id, q["id"], student_answer, score, feedback))
+            cursor.execute("INSERT INTO answers (student_id,exam_id,question_id,answer,score,feedback) VALUES (%s,%s,%s,%s,%s,%s)",
+                (student_id, exam_id, q["id"], student_answer, score, feedback))
+
         else:
+            # Theory — pending evaluation
             has_theory     = True
             student_answer = answers_data.get(f"q{q['id']}", "").strip()
-            cursor.execute("INSERT INTO answers (student_id, exam_id, question_id, answer, score, feedback) VALUES (%s,%s,%s,%s,%s,%s)", (student_id, exam_id, q["id"], student_answer, None, "Pending AI evaluation"))
+            cursor.execute("INSERT INTO answers (student_id,exam_id,question_id,answer,score,feedback) VALUES (%s,%s,%s,%s,%s,%s)",
+                (student_id, exam_id, q["id"], student_answer, None, "Pending AI evaluation"))
+
     initial_status = "Pending" if has_theory else "Evaluated"
-    cursor.execute("INSERT INTO results (student_id, exam_id, total_score, submission_status) VALUES (%s, %s, %s, %s)", (student_id, exam_id, round(total_score, 2), initial_status))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    cursor.execute("INSERT INTO results (student_id,exam_id,total_score,submission_status) VALUES (%s,%s,%s,%s)",
+        (student_id, exam_id, round(total_score, 2), initial_status))
+    conn.commit(); cursor.close(); conn.close()
+
     if has_theory:
         app_ctx = app.app_context()
-        thread  = threading.Thread(target=run_background_evaluation, args=(student_id, exam_id, app_ctx), daemon=True)
-        thread.start()
-        print(f"[Submit] Background evaluation started for student {student_id}, exam {exam_id}")
+        threading.Thread(target=run_background_evaluation, args=(student_id, exam_id, app_ctx), daemon=True).start()
+
     return render_template('exam_submitted.html', has_theory=has_theory, objective_score=round(total_score, 2))
 
 # ── DELETE STUDENT
@@ -936,9 +945,7 @@ def delete_student(id):
     cursor.execute("DELETE FROM answers WHERE student_id=%s", (id,))
     cursor.execute("DELETE FROM results WHERE student_id=%s", (id,))
     cursor.execute("DELETE FROM students WHERE id=%s", (id,))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    conn.commit(); cursor.close(); conn.close()
     return redirect("/student_manager")
 
 # ── RUN AI EVALUATION (Manual)
@@ -947,32 +954,25 @@ def delete_student(id):
 def run_ai_check():
     conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT answers.id, answers.answer, answers.student_id, answers.exam_id, questions.question_text, questions.marks FROM answers JOIN questions ON answers.question_id = questions.id WHERE answers.score IS NULL AND questions.question_type = 'theory'")
+    cursor.execute("SELECT answers.id, answers.answer, answers.student_id, answers.exam_id, questions.question_text, questions.marks FROM answers JOIN questions ON answers.question_id=questions.id WHERE answers.score IS NULL AND questions.question_type='theory'")
     records = cursor.fetchall()
-    print(f"[AI Check] Pending theory answers: {len(records)}")
     for r in records:
         student_answer = (r["answer"] or "").strip()
         if not student_answer or len(student_answer) < 10:
-            cursor.execute("UPDATE answers SET score=%s, feedback=%s WHERE id=%s", (0, "No answer submitted or too short.", r["id"]))
+            cursor.execute("UPDATE answers SET score=%s, feedback=%s WHERE id=%s", (0, "No answer submitted.", r["id"]))
             continue
         score, feedback = evaluate_answer(r["question_text"], student_answer, r["marks"])
-        print(f"[AI Check] Answer #{r['id']} → {score}/{r['marks']}")
         cursor.execute("UPDATE answers SET score=%s, feedback=%s WHERE id=%s", (round(score, 1), feedback, r["id"]))
     conn.commit()
-    cursor.execute("SELECT DISTINCT answers.student_id, answers.exam_id FROM answers JOIN questions ON answers.question_id = questions.id WHERE questions.question_type = 'theory'")
-    student_exams = cursor.fetchall()
-    for se in student_exams:
+    cursor.execute("SELECT DISTINCT answers.student_id, answers.exam_id FROM answers JOIN questions ON answers.question_id=questions.id WHERE questions.question_type='theory'")
+    for se in cursor.fetchall():
         sid, eid = se["student_id"], se["exam_id"]
-        cursor.execute("SELECT COALESCE(SUM(score), 0) AS total FROM answers WHERE student_id = %s AND exam_id = %s", (sid, eid))
+        cursor.execute("SELECT COALESCE(SUM(score),0) AS total FROM answers WHERE student_id=%s AND exam_id=%s", (sid,eid))
         total = float(cursor.fetchone()["total"] or 0)
-        cursor.execute("SELECT COUNT(*) AS pending FROM answers WHERE student_id = %s AND exam_id = %s AND score IS NULL", (sid, eid))
-        pending    = cursor.fetchone()["pending"]
-        new_status = "Pending" if pending > 0 else "Evaluated"
-        cursor.execute("UPDATE results SET total_score = %s, submission_status = %s WHERE student_id = %s AND exam_id = %s", (round(total, 2), new_status, sid, eid))
-    conn.commit()
-    cursor.close()
-    conn.close()
-    print(f"[AI Check] Done — {len(records)} answers processed")
+        cursor.execute("SELECT COUNT(*) AS pending FROM answers WHERE student_id=%s AND exam_id=%s AND score IS NULL", (sid,eid))
+        new_status = "Pending" if cursor.fetchone()["pending"] > 0 else "Evaluated"
+        cursor.execute("UPDATE results SET total_score=%s, submission_status=%s WHERE student_id=%s AND exam_id=%s", (round(total,2), new_status, sid, eid))
+    conn.commit(); cursor.close(); conn.close()
     return f"AI Evaluation Complete — {len(records)} answers evaluated."
 
 # ── RESET AI EVALUATION
@@ -981,14 +981,11 @@ def run_ai_check():
 def reset_ai_evaluation():
     conn   = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE answers JOIN questions ON answers.question_id = questions.id SET answers.score = NULL, answers.feedback = NULL WHERE questions.question_type = 'theory'")
-    conn.commit()
-    cursor.close()
-    conn.close()
+    cursor.execute("UPDATE answers JOIN questions ON answers.question_id=questions.id SET answers.score=NULL, answers.feedback=NULL WHERE questions.question_type='theory'")
+    conn.commit(); cursor.close(); conn.close()
     return "AI Evaluation Reset Successfully"
 
 # ── PLAGIARISM CHECK
-# Note: sklearn used only here for plagiarism detection (lightweight, no model needed)
 from sklearn.feature_extraction.text import TfidfVectorizer as _TfidfVec
 from sklearn.metrics.pairwise import cosine_similarity as _cosine_sim
 @app.route("/plagiarism/<int:exam_id>")
@@ -996,36 +993,24 @@ from sklearn.metrics.pairwise import cosine_similarity as _cosine_sim
 def plagiarism_check(exam_id):
     conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT students.name, answers.answer FROM answers JOIN students ON answers.student_id = students.id JOIN questions ON answers.question_id = questions.id WHERE questions.exam_id=%s AND questions.question_type = 'theory'", (exam_id,))
-    data = cursor.fetchall()
-    cursor.close()
-    conn.close()
+    cursor.execute("SELECT students.name, answers.answer FROM answers JOIN students ON answers.student_id=students.id JOIN questions ON answers.question_id=questions.id WHERE questions.exam_id=%s AND questions.question_type='theory'", (exam_id,))
+    data = cursor.fetchall(); cursor.close(); conn.close()
     student_answers = {}
     for row in data:
-        name = row["name"]
-        ans  = row["answer"]
-        if not ans or not ans.strip():
-            continue
-        if name not in student_answers:
-            student_answers[name] = ""
-        student_answers[name] += " " + ans
-    names = list(student_answers.keys())
-    texts = list(student_answers.values())
-    similarity_results = []
-    cheaters = set()
+        if not row["answer"] or not row["answer"].strip(): continue
+        student_answers[row["name"]] = student_answers.get(row["name"], "") + " " + row["answer"]
+    names = list(student_answers.keys()); texts = list(student_answers.values())
+    similarity_results = []; cheaters = set()
     if len(texts) > 1:
         try:
             vectors    = _TfidfVec().fit_transform(texts)
             sim_matrix = _cosine_sim(vectors)
             for i in range(len(names)):
-                for j in range(i + 1, len(names)):
-                    sim = round(sim_matrix[i][j] * 100, 2)
+                for j in range(i+1, len(names)):
+                    sim = round(sim_matrix[i][j]*100, 2)
                     similarity_results.append({"student1": names[i], "student2": names[j], "similarity": sim})
-                    if sim > 80:
-                        cheaters.add(names[i])
-                        cheaters.add(names[j])
-        except ValueError:
-            pass
+                    if sim > 80: cheaters.add(names[i]); cheaters.add(names[j])
+        except ValueError: pass
     return render_template("plagiarism.html", similarity_results=similarity_results, cheaters=cheaters)
 
 
@@ -1034,14 +1019,36 @@ import numpy as _np
 import base64 as _b64
 from ultralytics import YOLO as _YOLO
 
-try:
-    phone_model = _YOLO("yolov8n.pt")
-except Exception as e:
-    print("YOLO Load Error:", e)
-    phone_model = None
+try:    phone_model = _YOLO("yolov8n.pt")
+except Exception as e: print("YOLO Load Error:", e); phone_model = None
 
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 eye_cascade  = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+
+# ── LOG VIOLATION (called from JS/Electron during exam)
+@app.route("/log_violation", methods=["POST"])
+@login_required("student")
+def log_violation():
+    """Store violation into DB — called by start_exam.html JS"""
+    try:
+        data       = request.get_json() or {}
+        student_id = session.get("student_id")
+        exam_id    = data.get("exam_id")
+        v_type     = str(data.get("type",    "unknown"))[:100]
+        details    = str(data.get("details", ""))[:500]
+        if not student_id or not exam_id:
+            return jsonify({"ok": False}), 400
+        conn   = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO exam_violations (student_id, exam_id, violation_type, details) VALUES (%s,%s,%s,%s)",
+            (student_id, exam_id, v_type, details)
+        )
+        conn.commit(); cursor.close(); conn.close()
+        return jsonify({"ok": True})
+    except Exception as e:
+        print(f"[Violation] DB error: {e}")
+        return jsonify({"ok": False}), 500
 
 # ── AI PROCTORING — DETECT CHEATING
 @app.route("/detect_cheating", methods=["POST"])
@@ -1053,48 +1060,38 @@ def detect_cheating():
         data = request.json
         if not data or "image" not in data:
             return jsonify({"cheating": False})
-        image_data  = data["image"].split(",")[1]
-        image_bytes = base64.b64decode(image_data)
+        image_bytes = base64.b64decode(data["image"].split(",")[1])
         nparr = np.frombuffer(image_bytes, np.uint8)
         img   = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
             return jsonify({"cheating": False})
         gray  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(100, 100))
-        if len(faces) == 0:
-            return jsonify({"cheating": True, "reason": "Face not visible / Looking away"})
-        if len(faces) > 1:
-            return jsonify({"cheating": True, "reason": f"Multiple faces detected ({len(faces)})"})
-        x, y, w, h   = faces[0]
-        face_roi     = gray[y:y+h, x:x+w]
-        eyes         = eye_cascade.detectMultiScale(face_roi, 1.1, 3)
-        if len(eyes) == 0:
-            return jsonify({"cheating": True, "reason": "Eyes not visible - Looking away"})
-        face_center_x = x + w / 2
-        face_center_y = y + h / 2
-        x_offset = (face_center_x - img.shape[1]/2) / (img.shape[1]/2)
-        y_offset = (face_center_y - img.shape[0]/2) / (img.shape[0]/2)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(100,100))
+        if len(faces) == 0: return jsonify({"cheating": True, "reason": "Face not visible"})
+        if len(faces) > 1:  return jsonify({"cheating": True, "reason": f"Multiple faces ({len(faces)})"})
+        x, y, w, h = faces[0]
+        eyes = eye_cascade.detectMultiScale(gray[y:y+h, x:x+w], 1.1, 3)
+        if len(eyes) == 0:  return jsonify({"cheating": True, "reason": "Eyes not visible"})
+        x_offset = ((x+w/2) - img.shape[1]/2) / (img.shape[1]/2)
+        y_offset = ((y+h/2) - img.shape[0]/2) / (img.shape[0]/2)
         if x_offset >  0.25: return jsonify({"cheating": True, "reason": "Looking Right"})
         if x_offset < -0.25: return jsonify({"cheating": True, "reason": "Looking Left"})
-        if y_offset >  0.25: return jsonify({"cheating": True, "reason": "Looking Down (Suspicious)"})
+        if y_offset >  0.25: return jsonify({"cheating": True, "reason": "Looking Down"})
         if y_offset < -0.25: return jsonify({"cheating": True, "reason": "Looking Up"})
         if phone_model is not None:
-            results = phone_model(img, verbose=False, conf=0.30)
-            for r in results:
+            for r in phone_model(img, verbose=False, conf=0.30):
                 for box in r.boxes:
-                    label = phone_model.names[int(box.cls)]
-                    if label in ["cell phone", "mobile phone", "phone"]:
+                    if phone_model.names[int(box.cls)] in ["cell phone","mobile phone","phone"]:
                         return jsonify({"cheating": True, "reason": "Mobile phone detected"})
         return jsonify({"cheating": False})
     except Exception as e:
-        print("AI Error Log:", e)
+        print("AI Error:", e)
         return jsonify({"cheating": False})
 
 
 # ================================================================
 # EMAIL SERVICE
 # ================================================================
-# ============================================================
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -1107,37 +1104,30 @@ EMAIL_CONFIG = {
     'MAX_OTP_ATTEMPTS':   3,
     'RATE_LIMIT_MINUTES': 5
 }
-
 if not EMAIL_CONFIG['SENDER_EMAIL'] or not EMAIL_CONFIG['APP_PASSWORD']:
     raise RuntimeError("OEMS_EMAIL aur OEMS_EMAIL_PASSWORD .env mein set nahi hain!")
 
 def is_valid_email(email):
-    return re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', str(email)) is not None
+    return bool(re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', str(email)))
 
 def sanitize_input(data):
-    if isinstance(data, str):
-        return data.strip()
-    return data
+    return data.strip() if isinstance(data, str) else data
 
 def rate_limit(max_attempts=3, window_minutes=5):
     def decorator(f):
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            client_ip = request.remote_addr
-            key       = f"rate_limit_{client_ip}_{f.__name__}"
-            now       = datetime.now()
+            key  = f"rate_limit_{request.remote_addr}_{f.__name__}"
+            now  = datetime.now()
             if key not in session:
                 session[key] = {'count': 0, 'first_attempt': now.isoformat()}
-            attempt_data  = session[key]
-            first_attempt = datetime.fromisoformat(attempt_data['first_attempt'])
-            if now - first_attempt > timedelta(minutes=window_minutes):
-                session[key] = {'count': 0, 'first_attempt': now.isoformat()}
-                attempt_data = session[key]
-            if attempt_data['count'] >= max_attempts:
-                remaining = window_minutes - (now - first_attempt).seconds // 60
-                raise TooManyRequests(f"Too many attempts. Try again in {remaining} minutes.")
-            attempt_data['count'] += 1
-            session[key] = attempt_data
+            ad = session[key]
+            fa = datetime.fromisoformat(ad['first_attempt'])
+            if now - fa > timedelta(minutes=window_minutes):
+                session[key] = {'count': 0, 'first_attempt': now.isoformat()}; ad = session[key]
+            if ad['count'] >= max_attempts:
+                raise TooManyRequests(f"Too many attempts. Try again in {window_minutes - (now-fa).seconds//60} minutes.")
+            ad['count'] += 1; session[key] = ad
             return f(*args, **kwargs)
         return decorated_function
     return decorator
@@ -1146,32 +1136,23 @@ class OTPManager:
     @staticmethod
     def generate_otp():
         return ''.join([str(secrets.randbelow(10)) for _ in range(6)])
-
     @staticmethod
     def store_otp(email, otp, mode='email', user_name=None):
-        expiry_time = datetime.now() + timedelta(minutes=EMAIL_CONFIG['OTP_EXPIRY_MINUTES'])
         session['otp_data'] = {'otp': otp, 'email': email, 'mode': mode, 'user_name': user_name,
-                               'expires_at': expiry_time.isoformat(), 'attempts': 0, 'created_at': datetime.now().isoformat()}
-
+            'expires_at': (datetime.now()+timedelta(minutes=EMAIL_CONFIG['OTP_EXPIRY_MINUTES'])).isoformat(),
+            'attempts': 0, 'created_at': datetime.now().isoformat()}
     @staticmethod
     def verify_otp(user_otp):
-        if 'otp_data' not in session:
-            return False, "No OTP found. Please request a new one."
-        otp_data   = session['otp_data']
-        expires_at = datetime.fromisoformat(otp_data['expires_at'])
-        if datetime.now() > expires_at:
-            session.pop('otp_data', None)
-            return False, "OTP has expired. Please request a new one."
-        if otp_data['attempts'] >= EMAIL_CONFIG['MAX_OTP_ATTEMPTS']:
-            session.pop('otp_data', None)
-            return False, "Too many failed attempts. Please request a new OTP."
-        otp_data['attempts'] += 1
-        session['otp_data']   = otp_data
-        if str(user_otp) != otp_data['otp']:
-            remaining = EMAIL_CONFIG['MAX_OTP_ATTEMPTS'] - otp_data['attempts']
-            return False, f"Invalid OTP. {remaining} attempts remaining."
-        session.pop('otp_data', None)
-        return True, otp_data
+        if 'otp_data' not in session: return False, "No OTP found."
+        od = session['otp_data']
+        if datetime.now() > datetime.fromisoformat(od['expires_at']):
+            session.pop('otp_data', None); return False, "OTP expired."
+        if od['attempts'] >= EMAIL_CONFIG['MAX_OTP_ATTEMPTS']:
+            session.pop('otp_data', None); return False, "Too many attempts."
+        od['attempts'] += 1; session['otp_data'] = od
+        if str(user_otp) != od['otp']:
+            return False, f"Invalid OTP. {EMAIL_CONFIG['MAX_OTP_ATTEMPTS']-od['attempts']} attempts remaining."
+        session.pop('otp_data', None); return True, od
 
 
 class EmailService:
@@ -1180,23 +1161,74 @@ class EmailService:
         self.app_password = EMAIL_CONFIG['APP_PASSWORD']
 
     def _create_connection(self):
+        server = smtplib.SMTP(EMAIL_CONFIG['SMTP_SERVER'], EMAIL_CONFIG['SMTP_PORT'])
+        server.starttls()
+        server.login(self.sender_email, self.app_password)
+        return server
+
+    def send_welcome_email(self, receiver_email, student_name, admission_no, password, program="", branch="", semester=""):
+        """Welcome email — new/existing student credentials"""
         try:
-            server = smtplib.SMTP(EMAIL_CONFIG['SMTP_SERVER'], EMAIL_CONFIG['SMTP_PORT'])
-            server.starttls()
-            server.login(self.sender_email, self.app_password)
-            return server
+            first_name = get_first_name(student_name)
+            ref_id     = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            msg = MIMEMultipart('alternative')
+            msg['From']    = formataddr(('OEMS Support Team', self.sender_email))
+            msg['To']      = receiver_email
+            msg['Subject'] = "Welcome to OEMS — Your Login Credentials"
+            text = (f"Hi {first_name},\n\nYour OEMS account is ready.\n\n"
+                    f"Admission No: {admission_no}\nPassword: {password}\n"
+                    f"Program: {program} | Branch: {branch} | Semester: {semester}\n\n"
+                    f"Please login and change your password immediately.\n\nRegards,\nOEMS Support Team\nRef ID: {ref_id}")
+            html = f"""
+<html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;margin:0;">
+<table align="center" width="100%" style="max-width:500px;background:#fff;border-radius:8px;border:1px solid #e0e0e0;margin:0 auto;border-collapse:collapse;">
+  <tr><td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #c8e6c9;">
+    <p style="margin:0;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;">OEMS Support Team</p>
+    <h2 style="margin:4px 0 0;color:#1e293b;font-size:20px;font-weight:700;">Welcome to OEMS</h2>
+  </td></tr>
+  <tr><td style="padding:28px 24px;">
+    <p style="margin:0 0 16px;color:#333;font-size:15px;">Hi <strong>{first_name}</strong>,</p>
+    <p style="margin:0 0 16px;color:#555;font-size:14px;line-height:1.6;">Your OEMS account is ready. Use the credentials below to login:</p>
+    <table width="100%" style="background:#f8fafc;border-radius:6px;border:1px solid #e0e0e0;margin-bottom:16px;border-collapse:collapse;">
+      <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;width:45%;">Admission No</td>
+          <td style="padding:10px 14px;font-size:15px;border-bottom:1px solid #eee;"><span style="font-family:monospace;font-weight:700;color:#1e293b;">{admission_no}</span></td></tr>
+      <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;">Password</td>
+          <td style="padding:10px 14px;font-size:15px;border-bottom:1px solid #eee;"><span style="font-family:monospace;font-weight:700;color:#4f46e5;">{password}</span></td></tr>
+      <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;">Program</td>
+          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;">{program}</td></tr>
+      <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;">Branch</td>
+          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;">{branch}</td></tr>
+      <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;">Semester</td>
+          <td style="padding:10px 14px;color:#555;font-size:14px;">{semester}</td></tr>
+    </table>
+    <table width="100%" style="margin-bottom:20px;">
+      <tr><td style="background:#fff3e0;border-left:4px solid #ff9800;border-radius:0 4px 4px 0;padding:12px 14px;">
+        <p style="margin:0;color:#e65100;font-size:13px;line-height:1.5;">⚠️ Please login and change your password immediately for security.</p>
+      </td></tr>
+    </table>
+    <p style="margin:0 0 4px;color:#333;font-size:14px;"><strong>Regards,</strong></p>
+    <p style="margin:0;color:#555;font-size:14px;">OEMS Support Team</p>
+  </td></tr>
+  <tr><td style="padding:12px 24px;border-top:1px solid #f0f0f0;text-align:center;">
+    <p style="margin:0;font-size:11px;color:#aaa;">Ref ID: {ref_id}</p>
+  </td></tr>
+</table></body></html>"""
+            msg.attach(MIMEText(text, 'plain'))
+            msg.attach(MIMEText(html, 'html'))
+            with self._create_connection() as server:
+                server.sendmail(self.sender_email, receiver_email, msg.as_string())
+            logger.info(f"Welcome email sent to {receiver_email}")
+            return True
         except Exception as e:
-            logger.error(f"SMTP Connection failed: {str(e)}")
-            raise
+            logger.error(f"Welcome email failed: {e}"); return False
 
     def send_otp_email(self, receiver_email, otp, mode="email", user_name="Student"):
-        """OTP email — EduSkills style"""
         try:
-            first_name   = get_first_name(user_name)
-            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            first_name = get_first_name(user_name)
+            ref_id     = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             msg = MIMEMultipart('alternative')
-            msg['From']    = formataddr(('OEMS Support', self.sender_email))
-            msg['To']      = receiver_email
+            msg['From'] = formataddr(('OEMS Support', self.sender_email))
+            msg['To']   = receiver_email
             if mode == "password":
                 msg['Subject'] = 'OEMS Account - Password Reset Request'
                 action_text  = "reset the password for your OEMS account"
@@ -1207,188 +1239,132 @@ class EmailService:
                 action_text  = "update the email address associated with your OEMS account"
                 warning_text = "If you did not request an email change, please ignore this email."
                 heading      = "Email Verification"
-
-            ref_id       = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            text_content = (
-                f"Hi {first_name},\n\n"
-                f"We received a request to {action_text}.\n\n"
-                f"Verification Code\n"
-                f"Please use the following 6-digit code to complete your process. "
-                f"It is valid for {EMAIL_CONFIG['OTP_EXPIRY_MINUTES']} minutes.\n\n"
-                f"{otp}\n\n"
-                f"Security Notice\n"
-                f"{warning_text}\n\n"
-                f"Regards,\nOEMS Support Team\n\nRef ID: {ref_id}"
-            )
-            html_content = f"""
+            text = (f"Hi {first_name},\n\nWe received a request to {action_text}.\n\n"
+                    f"Verification Code\nPlease use the following 6-digit code. Valid for {EMAIL_CONFIG['OTP_EXPIRY_MINUTES']} minutes.\n\n"
+                    f"{otp}\n\nSecurity Notice\n{warning_text}\n\nRegards,\nOEMS Support Team\nRef ID: {ref_id}")
+            html = f"""
 <html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;margin:0;">
 <table align="center" width="100%" style="max-width:500px;background:#fff;border-radius:8px;border:1px solid #e0e0e0;margin:0 auto;border-collapse:collapse;">
-  <tr>
-    <td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #c8e6c9;">
-      <p style="margin:0;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;">OEMS Security Update</p>
-      <h2 style="margin:4px 0 0;color:#1e293b;font-size:20px;font-weight:700;">{heading}</h2>
-    </td>
-  </tr>
-  <tr>
-    <td style="padding:28px 24px;">
-      <p style="margin:0 0 16px;color:#333;font-size:15px;">Hi <strong>{first_name}</strong>,</p>
-      <p style="margin:0 0 20px;color:#555;font-size:14px;line-height:1.6;">We received a request to {action_text}.</p>
-
-      <p style="margin:0 0 8px;color:#333;font-size:14px;font-weight:700;">Verification Code</p>
-      <p style="margin:0 0 12px;color:#555;font-size:14px;line-height:1.6;">Please use the following 6-digit code to complete your process. It is valid for {EMAIL_CONFIG['OTP_EXPIRY_MINUTES']} minutes.</p>
-
-      <table width="100%" style="margin-bottom:20px;">
-        <tr>
-          <td align="center" style="background:#f8fafc;padding:16px;border-radius:6px;border:1.5px dashed #b0bec5;">
-            <span style="font-family:monospace;font-size:32px;font-weight:800;letter-spacing:10px;color:#1e293b;">{otp}</span>
-          </td>
-        </tr>
-      </table>
-
-      <p style="margin:0 0 8px;color:#333;font-size:14px;font-weight:700;">Security Notice</p>
-      <table width="100%" style="margin-bottom:24px;">
-        <tr>
-          <td style="background:#fff3e0;border-left:4px solid #ff9800;border-radius:0 4px 4px 0;padding:12px 14px;">
-            <p style="margin:0;color:#e65100;font-size:13px;line-height:1.5;">
-              ⚠️ {warning_text}
-            </p>
-          </td>
-        </tr>
-      </table>
-
-      <p style="margin:0 0 4px;color:#333;font-size:14px;"><strong>Regards,</strong></p>
-      <p style="margin:0;color:#555;font-size:14px;">OEMS Support Team</p>
-    </td>
-  </tr>
-  <tr>
-    <td style="padding:12px 24px;border-top:1px solid #f0f0f0;text-align:center;">
-      <p style="margin:0;font-size:11px;color:#aaa;">Ref ID: {ref_id}</p>
-    </td>
-  </tr>
-</table>
-</body></html>"""
-            msg.attach(MIMEText(text_content, 'plain'))
-            msg.attach(MIMEText(html_content, 'html'))
+  <tr><td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #c8e6c9;">
+    <p style="margin:0;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;">OEMS Security Update</p>
+    <h2 style="margin:4px 0 0;color:#1e293b;font-size:20px;font-weight:700;">{heading}</h2>
+  </td></tr>
+  <tr><td style="padding:28px 24px;">
+    <p style="margin:0 0 16px;color:#333;font-size:15px;">Hi <strong>{first_name}</strong>,</p>
+    <p style="margin:0 0 20px;color:#555;font-size:14px;line-height:1.6;">We received a request to {action_text}.</p>
+    <p style="margin:0 0 8px;color:#333;font-size:14px;font-weight:700;">Verification Code</p>
+    <p style="margin:0 0 12px;color:#555;font-size:14px;line-height:1.6;">Please use the following 6-digit code to complete your process. It is valid for {EMAIL_CONFIG['OTP_EXPIRY_MINUTES']} minutes.</p>
+    <table width="100%" style="margin-bottom:20px;"><tr>
+      <td align="center" style="background:#f8fafc;padding:16px;border-radius:6px;border:1.5px dashed #b0bec5;">
+        <span style="font-family:monospace;font-size:32px;font-weight:800;letter-spacing:10px;color:#1e293b;">{otp}</span>
+      </td></tr></table>
+    <p style="margin:0 0 8px;color:#333;font-size:14px;font-weight:700;">Security Notice</p>
+    <table width="100%" style="margin-bottom:24px;"><tr>
+      <td style="background:#fff3e0;border-left:4px solid #ff9800;border-radius:0 4px 4px 0;padding:12px 14px;">
+        <p style="margin:0;color:#e65100;font-size:13px;line-height:1.5;">⚠️ {warning_text}</p>
+      </td></tr></table>
+    <p style="margin:0 0 4px;color:#333;font-size:14px;"><strong>Regards,</strong></p>
+    <p style="margin:0;color:#555;font-size:14px;">OEMS Support Team</p>
+  </td></tr>
+  <tr><td style="padding:12px 24px;border-top:1px solid #f0f0f0;text-align:center;">
+    <p style="margin:0;font-size:11px;color:#aaa;">Ref ID: {ref_id}</p>
+  </td></tr>
+</table></body></html>"""
+            msg.attach(MIMEText(text, 'plain'))
+            msg.attach(MIMEText(html, 'html'))
             with self._create_connection() as server:
                 server.sendmail(self.sender_email, receiver_email, msg.as_string())
-            logger.info(f"OTP email sent to {receiver_email}")
             return True
         except Exception as e:
-            logger.error(f"Failed to send OTP email: {str(e)}")
-            return False
+            logger.error(f"OTP email failed: {e}"); return False
 
     def send_success_email(self, receiver_email, mode, user_name="Student"):
-        """Success email after OTP verified — EduSkills style"""
         try:
             first_name = get_first_name(user_name)
+            ref_id     = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             msg = MIMEMultipart('alternative')
             msg['From'] = formataddr(('OEMS Support', self.sender_email))
             msg['To']   = receiver_email
             if mode == 'password':
                 msg['Subject'] = "OEMS Account - Password Updated Successfully"
-                heading = "Password Updated"
-                message = "Your password has been successfully changed."
+                heading = "Password Updated"; message = "Your password has been successfully changed."
             else:
                 msg['Subject'] = "OEMS Account - Email Updated Successfully"
-                heading = "Email Updated"
-                message = "Your email address has been successfully updated."
-
-            text_content = f"Hi {first_name},\n\n{message}\n\nRegards,\nOEMS Support Team"
-            html_content = f"""
-<html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;">
-<table align="center" width="100%" style="max-width:500px;background:#fff;border-radius:8px;border:1px solid #e2e8f0;margin:0 auto;">
-  <tr>
-    <td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #d1e8da;">
-      <h2 style="margin:0;color:#1e293b;font-size:18px;font-weight:600;">{heading}</h2>
-    </td>
-  </tr>
-  <tr>
-    <td style="padding:24px;">
-      <p style="margin:0 0 12px;color:#333;">Hi {first_name},</p>
-      <p style="margin:0 0 16px;color:#333;">{message}</p>
-      <p style="margin:20px 0 0;color:#333;"><strong>Regards,</strong><br>OEMS Support Team</p>
-      <p style="margin:8px 0 0;font-size:11px;color:#aaa;border-top:1px solid #e2e8f0;padding-top:8px;">
-        Ref ID: {ref_id}
-      </p>
-    </td>
-  </tr>
-</table>
-</body></html>""".format(ref_id=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-            msg.attach(MIMEText(text_content, 'plain'))
-            msg.attach(MIMEText(html_content, 'html'))
+                heading = "Email Updated"; message = "Your email address has been successfully updated."
+            text = f"Hi {first_name},\n\n{message}\n\nRegards,\nOEMS Support Team\nRef ID: {ref_id}"
+            html = f"""
+<html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;margin:0;">
+<table align="center" width="100%" style="max-width:500px;background:#fff;border-radius:8px;border:1px solid #e0e0e0;margin:0 auto;border-collapse:collapse;">
+  <tr><td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #c8e6c9;">
+    <p style="margin:0;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;">OEMS Security Update</p>
+    <h2 style="margin:4px 0 0;color:#1e293b;font-size:20px;font-weight:700;">{heading}</h2>
+  </td></tr>
+  <tr><td style="padding:28px 24px;">
+    <p style="margin:0 0 16px;color:#333;font-size:15px;">Hi <strong>{first_name}</strong>,</p>
+    <p style="margin:0 0 20px;color:#555;font-size:14px;line-height:1.6;">{message}</p>
+    <p style="margin:0 0 4px;color:#333;font-size:14px;"><strong>Regards,</strong></p>
+    <p style="margin:0;color:#555;font-size:14px;">OEMS Support Team</p>
+  </td></tr>
+  <tr><td style="padding:12px 24px;border-top:1px solid #f0f0f0;text-align:center;">
+    <p style="margin:0;font-size:11px;color:#aaa;">Ref ID: {ref_id}</p>
+  </td></tr>
+</table></body></html>"""
+            msg.attach(MIMEText(text, 'plain'))
+            msg.attach(MIMEText(html, 'html'))
             with self._create_connection() as server:
                 server.sendmail(self.sender_email, receiver_email, msg.as_string())
             return True
         except Exception as e:
-            logger.error(f"Failed to send success email: {str(e)}")
-            return False
+            logger.error(f"Success email failed: {e}"); return False
 
     def create_exam_alert_msg(self, receiver_email, student_name, exam_name, exam_date, duration):
-        """Exam publish alert — EduSkills style"""
-        first_name   = get_first_name(student_name)
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        first_name = get_first_name(student_name)
+        ref_id     = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = MIMEMultipart('alternative')
         msg['From']    = formataddr(('OEMS Examination Team', self.sender_email))
         msg['To']      = receiver_email
         msg['Subject'] = f"New Exam Scheduled: {exam_name}"
-        ref_id       = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        text_content = f"Hi {first_name},\n\nA new exam has been scheduled.\n\nCourse: {exam_name}\nDate: {exam_date}\nDuration: {duration} minutes\n\nBest of luck!\n\nRegards,\nOEMS Examination Team\n\nRef ID: {ref_id}"
-        html_content = f"""
+        text = f"Hi {first_name},\n\nNew exam scheduled.\n\nCourse: {exam_name}\nDate: {exam_date}\nDuration: {duration} minutes\n\nBest of luck!\n\nRegards,\nOEMS Examination Team\nRef ID: {ref_id}"
+        html = f"""
 <html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;margin:0;">
 <table align="center" width="100%" style="max-width:500px;background:#fff;border-radius:8px;border:1px solid #e0e0e0;margin:0 auto;border-collapse:collapse;">
-  <tr>
-    <td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #c8e6c9;">
-      <p style="margin:0;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;">OEMS Examination Team</p>
-      <h2 style="margin:4px 0 0;color:#1e293b;font-size:20px;font-weight:700;">New Exam Scheduled</h2>
-    </td>
-  </tr>
-  <tr>
-    <td style="padding:28px 24px;">
-      <p style="margin:0 0 16px;color:#333;font-size:15px;">Hi <strong>{first_name}</strong>,</p>
-      <p style="margin:0 0 16px;color:#555;font-size:14px;line-height:1.6;">A new exam has been published for your batch:</p>
-      <table width="100%" style="background:#f8fafc;border-radius:6px;border:1px solid #e0e0e0;margin-bottom:20px;border-collapse:collapse;">
-        <tr>
-          <td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;width:35%;">Course</td>
-          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;">{exam_name}</td>
-        </tr>
-        <tr>
-          <td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;">Date</td>
-          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;">{exam_date}</td>
-        </tr>
-        <tr>
-          <td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;">Duration</td>
-          <td style="padding:10px 14px;color:#555;font-size:14px;">{duration} minutes</td>
-        </tr>
-      </table>
-      <p style="margin:0 0 20px;color:#555;font-size:14px;">Best of luck!</p>
-      <p style="margin:0 0 4px;color:#333;font-size:14px;"><strong>Regards,</strong></p>
-      <p style="margin:0;color:#555;font-size:14px;">OEMS Examination Team</p>
-    </td>
-  </tr>
-  <tr>
-    <td style="padding:12px 24px;border-top:1px solid #f0f0f0;text-align:center;">
-      <p style="margin:0;font-size:11px;color:#aaa;">Ref ID: {ref_id}</p>
-    </td>
-  </tr>
-</table>
-</body></html>"""
-        msg.attach(MIMEText(text_content, 'plain'))
-        msg.attach(MIMEText(html_content, 'html'))
+  <tr><td style="background:#e8f5e9;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #c8e6c9;">
+    <p style="margin:0;font-size:12px;color:#666;text-transform:uppercase;letter-spacing:1px;">OEMS Examination Team</p>
+    <h2 style="margin:4px 0 0;color:#1e293b;font-size:20px;font-weight:700;">New Exam Scheduled</h2>
+  </td></tr>
+  <tr><td style="padding:28px 24px;">
+    <p style="margin:0 0 16px;color:#333;font-size:15px;">Hi <strong>{first_name}</strong>,</p>
+    <p style="margin:0 0 16px;color:#555;font-size:14px;line-height:1.6;">A new exam has been published for your batch:</p>
+    <table width="100%" style="background:#f8fafc;border-radius:6px;border:1px solid #e0e0e0;margin-bottom:20px;border-collapse:collapse;">
+      <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;width:35%;">Course</td>
+          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;">{exam_name}</td></tr>
+      <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;">Date</td>
+          <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;">{exam_date}</td></tr>
+      <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;">Duration</td>
+          <td style="padding:10px 14px;color:#555;font-size:14px;">{duration} minutes</td></tr>
+    </table>
+    <p style="margin:0 0 20px;color:#555;font-size:14px;">Best of luck!</p>
+    <p style="margin:0 0 4px;color:#333;font-size:14px;"><strong>Regards,</strong></p>
+    <p style="margin:0;color:#555;font-size:14px;">OEMS Examination Team</p>
+  </td></tr>
+  <tr><td style="padding:12px 24px;border-top:1px solid #f0f0f0;text-align:center;">
+    <p style="margin:0;font-size:11px;color:#aaa;">Ref ID: {ref_id}</p>
+  </td></tr>
+</table></body></html>"""
+        msg.attach(MIMEText(text, 'plain'))
+        msg.attach(MIMEText(html, 'html'))
         return msg
 
     def send_bulk_exam_alerts(self, student_list, exam_name, exam_date, duration):
-        if not student_list:
-            return {'success': False, 'message': 'No students to notify'}
-        success_count = 0
-        failed_emails = []
+        if not student_list: return {'success': False, 'message': 'No students'}
+        success_count = 0; failed_emails = []
         try:
             with self._create_connection() as server:
                 for student in student_list:
                     receiver_email = student.get('email')
                     student_name   = student.get('name') or 'Student'
                     if not receiver_email or not is_valid_email(receiver_email):
-                        failed_emails.append({'name': student_name, 'reason': 'Invalid email'})
-                        continue
+                        failed_emails.append({'name': student_name, 'reason': 'Invalid email'}); continue
                     try:
                         msg = self.create_exam_alert_msg(receiver_email, student_name, exam_name, exam_date, duration)
                         server.sendmail(self.sender_email, receiver_email, msg.as_string())
@@ -1404,14 +1380,10 @@ email_service = EmailService()
 
 def send_email_async(func, *args, **kwargs):
     def task():
-        try:
-            func(*args, **kwargs)
-        except Exception as e:
-            logger.error(f"Async email task failed: {str(e)}")
-    thread = threading.Thread(target=task)
-    thread.daemon = True
-    thread.start()
-    return thread
+        try: func(*args, **kwargs)
+        except Exception as e: logger.error(f"Async email failed: {e}")
+    t = threading.Thread(target=task); t.daemon = True; t.start()
+    return t
 
 
 # ── SEND OTP
@@ -1420,34 +1392,25 @@ def send_email_async(func, *args, **kwargs):
 def send_otp():
     try:
         data      = request.get_json()
-        if not data:
-            return jsonify({"success": False, "message": "No data provided"}), 400
+        if not data: return jsonify({"success": False, "message": "No data"}), 400
         new_email = sanitize_input(data.get('email'))
         mode      = data.get('mode', 'email')
         user_name = data.get('name') or data.get('student_name')
         if not new_email or not is_valid_email(new_email):
-            return jsonify({"success": False, "message": "Valid email is required"}), 400
+            return jsonify({"success": False, "message": "Valid email required"}), 400
         if mode == 'email':
-            conn   = get_db_connection()
-            cursor = conn.cursor()
+            conn = get_db_connection(); cursor = conn.cursor()
             try:
-                cursor.execute("SELECT id FROM students WHERE email = %s", (new_email,))
-                if cursor.fetchone():
-                    return jsonify({"success": False, "message": "Email already registered to another account."}), 400
-            finally:
-                cursor.close()
-                conn.close()
-        if mode not in ['email', 'password']:
-            return jsonify({"success": False, "message": "Invalid mode"}), 400
+                cursor.execute("SELECT id FROM students WHERE email=%s", (new_email,))
+                if cursor.fetchone(): return jsonify({"success": False, "message": "Email already registered"}), 400
+            finally: cursor.close(); conn.close()
+        if mode not in ['email', 'password']: return jsonify({"success": False, "message": "Invalid mode"}), 400
         otp = OTPManager.generate_otp()
         OTPManager.store_otp(new_email, otp, mode, user_name)
         send_email_async(email_service.send_otp_email, new_email, otp, mode, user_name)
-        return jsonify({"success": True, "message": "OTP sent successfully"}), 200
-    except TooManyRequests as e:
-        return jsonify({"success": False, "message": str(e)}), 429
-    except Exception as e:
-        logger.error(f"Error in send_otp: {str(e)}")
-        return jsonify({"success": False, "message": "Internal server error"}), 500
+        return jsonify({"success": True, "message": "OTP sent"}), 200
+    except TooManyRequests as e: return jsonify({"success": False, "message": str(e)}), 429
+    except Exception as e: logger.error(f"send_otp: {e}"); return jsonify({"success": False, "message": "Internal server error"}), 500
 
 # ── VERIFY OTP
 @app.route('/verify_otp', methods=['POST'])
@@ -1455,27 +1418,21 @@ def send_otp():
 def verify_otp():
     try:
         data         = request.get_json()
-        if not data:
-            return jsonify({"success": False, "message": "No data provided"}), 400
+        if not data: return jsonify({"success": False, "message": "No data"}), 400
         user_otp     = sanitize_input(data.get('otp'))
         mode         = data.get('mode')
         target_email = sanitize_input(data.get('email'))
         if not user_otp or not target_email or not is_valid_email(target_email):
-            return jsonify({"success": False, "message": "OTP and valid email are required"}), 400
+            return jsonify({"success": False, "message": "OTP and valid email required"}), 400
         is_valid, result = OTPManager.verify_otp(user_otp)
-        if not is_valid:
-            return jsonify({"success": False, "message": result}), 400
+        if not is_valid: return jsonify({"success": False, "message": result}), 400
         otp_data = result
-        if otp_data['email'] != target_email:
-            return jsonify({"success": False, "message": "Email mismatch"}), 400
+        if otp_data['email'] != target_email: return jsonify({"success": False, "message": "Email mismatch"}), 400
         user_name = otp_data.get('user_name', 'Student')
         send_email_async(email_service.send_success_email, target_email, mode or otp_data['mode'], user_name)
         return jsonify({"success": True, "message": "Verification successful", "verified_email": target_email}), 200
-    except TooManyRequests as e:
-        return jsonify({"success": False, "message": str(e)}), 429
-    except Exception as e:
-        logger.error(f"Error in verify_otp: {str(e)}")
-        return jsonify({"success": False, "message": "Internal server error"}), 500
+    except TooManyRequests as e: return jsonify({"success": False, "message": str(e)}), 429
+    except Exception as e: logger.error(f"verify_otp: {e}"); return jsonify({"success": False, "message": "Internal server error"}), 500
 
 # ── RESEND OTP
 @app.route('/resend_otp', methods=['POST'])
@@ -1484,42 +1441,32 @@ def resend_otp():
     try:
         data  = request.get_json()
         email = sanitize_input(data.get('email'))
-        if not email or not is_valid_email(email):
-            return jsonify({"success": False, "message": "Valid email required"}), 400
+        if not email or not is_valid_email(email): return jsonify({"success": False, "message": "Valid email required"}), 400
         if 'otp_data' in session:
-            created_at = datetime.fromisoformat(session['otp_data']['created_at'])
-            if datetime.now() - created_at < timedelta(seconds=30):
-                remaining = 30 - (datetime.now() - created_at).seconds
-                return jsonify({"success": False, "message": f"Wait {remaining} seconds before requesting new OTP"}), 429
-        old_data  = session.get('otp_data', {})
-        mode      = old_data.get('mode', 'email')
-        user_name = old_data.get('user_name', 'Student')
+            ca = datetime.fromisoformat(session['otp_data']['created_at'])
+            if datetime.now() - ca < timedelta(seconds=30):
+                return jsonify({"success": False, "message": f"Wait {30-(datetime.now()-ca).seconds}s before new OTP"}), 429
+        od = session.get('otp_data', {})
         otp = OTPManager.generate_otp()
-        OTPManager.store_otp(email, otp, mode, user_name)
-        send_email_async(email_service.send_otp_email, email, otp, mode, user_name)
+        OTPManager.store_otp(email, otp, od.get('mode','email'), od.get('user_name','Student'))
+        send_email_async(email_service.send_otp_email, email, otp, od.get('mode','email'), od.get('user_name','Student'))
         return jsonify({"success": True, "message": "New OTP sent"}), 200
-    except TooManyRequests as e:
-        return jsonify({"success": False, "message": str(e)}), 429
-    except Exception as e:
-        logger.error(f"Error in resend_otp: {str(e)}")
-        return jsonify({"success": False, "message": "Internal server error"}), 500
+    except TooManyRequests as e: return jsonify({"success": False, "message": str(e)}), 429
+    except Exception as e: logger.error(f"resend_otp: {e}"); return jsonify({"success": False, "message": "Internal server error"}), 500
 
 # ── BULK EXAM ALERTS
 @app.route('/send_bulk_exam_alerts', methods=['POST'])
 def bulk_exam_alerts():
     try:
         data = request.get_json()
-        for field in ['students', 'exam_name', 'exam_date', 'duration']:
-            if field not in data:
-                return jsonify({"success": False, "message": f"Missing field: {field}"}), 400
+        for f in ['students','exam_name','exam_date','duration']:
+            if f not in data: return jsonify({"success": False, "message": f"Missing: {f}"}), 400
         student_list = data['students']
-        if not isinstance(student_list, list) or len(student_list) == 0:
-            return jsonify({"success": False, "message": "Student list must be non-empty"}), 400
+        if not isinstance(student_list, list) or not student_list:
+            return jsonify({"success": False, "message": "Student list empty"}), 400
         send_email_async(email_service.send_bulk_exam_alerts, student_list, data['exam_name'], data['exam_date'], data['duration'])
         return jsonify({"success": True, "message": "Bulk alert started", "total_students": len(student_list)}), 202
-    except Exception as e:
-        logger.error(f"Error in bulk_exam_alerts: {str(e)}")
-        return jsonify({"success": False, "message": "Internal server error"}), 500
+    except Exception as e: logger.error(f"bulk_alerts: {e}"); return jsonify({"success": False, "message": "Internal server error"}), 500
 
 # ── STUDENT RESULT PAGE
 @app.route("/my_result/<int:exam_id>")
@@ -1528,54 +1475,47 @@ def student_result(exam_id):
     student_id = session.get("student_id")
     conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM results WHERE student_id = %s AND exam_id = %s", (student_id, exam_id))
+    cursor.execute("SELECT * FROM results WHERE student_id=%s AND exam_id=%s", (student_id, exam_id))
     result = cursor.fetchone()
     if not result:
-        cursor.close()
-        conn.close()
+        cursor.close(); conn.close()
         return "<script>alert('Result not found.'); window.location.href='/student';</script>"
-    cursor.execute("SELECT * FROM students WHERE id = %s", (student_id,))
+    cursor.execute("SELECT * FROM students WHERE id=%s", (student_id,))
     student = cursor.fetchone()
-    cursor.execute("SELECT * FROM exams WHERE id = %s", (exam_id,))
+    cursor.execute("SELECT * FROM exams WHERE id=%s", (exam_id,))
     exam = cursor.fetchone()
-    cursor.execute("SELECT q.question_text, q.marks, q.question_type, a.answer AS student_answer, a.score, a.feedback FROM answers a JOIN questions q ON a.question_id = q.id WHERE a.student_id = %s AND a.exam_id = %s ORDER BY q.id", (student_id, exam_id))
+    cursor.execute("SELECT q.question_text, q.marks, q.question_type, a.answer AS student_answer, a.score, a.feedback FROM answers a JOIN questions q ON a.question_id=q.id WHERE a.student_id=%s AND a.exam_id=%s ORDER BY q.id", (student_id, exam_id))
     answers = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    max_marks     = sum(a['marks'] for a in answers)
-    total_score   = result['total_score'] or 0
-    percentage    = round((total_score / max_marks * 100), 1) if max_marks > 0 else 0
-    total_q       = len(answers)
-    attempted     = sum(1 for a in answers if str(a.get('student_answer') or '').strip())
-    not_attempted = total_q - attempted
-    if percentage >= 90:   grade = 'O'
-    elif percentage >= 75: grade = 'A'
-    elif percentage >= 60: grade = 'B'
-    elif percentage >= 45: grade = 'C'
-    elif percentage >= 35: grade = 'D'
-    else:                  grade = 'F'
-    return render_template('student_result.html', student=student, exam=exam, answers=answers, total_score=total_score, max_marks=max_marks, percentage=percentage, grade=grade, total_questions=total_q, attempted=attempted, not_attempted=not_attempted, submission_status=result['submission_status'])
+    cursor.close(); conn.close()
+    max_marks   = sum(a['marks'] for a in answers)
+    total_score = result['total_score'] or 0
+    percentage  = round((total_score/max_marks*100), 1) if max_marks > 0 else 0
+    total_q     = len(answers)
+    attempted   = sum(1 for a in answers if str(a.get('student_answer') or '').strip())
+    grade = 'O' if percentage>=90 else 'A' if percentage>=75 else 'B' if percentage>=60 else 'C' if percentage>=45 else 'D' if percentage>=35 else 'F'
+    return render_template('student_result.html', student=student, exam=exam, answers=answers, total_score=total_score,
+        max_marks=max_marks, percentage=percentage, grade=grade, total_questions=total_q, attempted=attempted,
+        not_attempted=total_q-attempted, submission_status=result['submission_status'])
 
 # ── VIOLATION LOGS (Admin)
 @app.route("/violation_logs")
 @login_required("admin")
 def violation_logs():
     log_path = os.path.join(os.path.expanduser("~"), "oems_violations.log")
-    logs     = []
+    logs = []
     if os.path.exists(log_path):
         with open(log_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if not line or line.startswith("="):
-                    continue
+                if not line or line.startswith("="): continue
                 try:
                     ts_end    = line.index("]")
-                    timestamp = line[1:ts_end].replace("T", " ")[:19]
-                    rest      = line[ts_end + 2:].strip()
+                    timestamp = line[1:ts_end].replace("T"," ")[:19]
+                    rest      = line[ts_end+2:].strip()
                     if "|" in rest:
                         parts   = rest.split("|")
-                        ev_type = parts[1].replace("type=", "").strip() if len(parts) > 1 else rest
-                        details = parts[2].replace("details=", "").strip() if len(parts) > 2 else ""
+                        ev_type = parts[1].replace("type=","").strip() if len(parts)>1 else rest
+                        details = parts[2].replace("details=","").strip() if len(parts)>2 else ""
                     else:
                         ev_type = rest.split("—")[0].strip() if "—" in rest else rest[:30]
                         details = rest

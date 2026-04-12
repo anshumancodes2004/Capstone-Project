@@ -58,7 +58,7 @@ def get_db_connection():
 
 # ── Ollama Config ──
 OLLAMA_URL   = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "deepseek-r1:8b")
 print(f"[OEMS] Ollama endpoint: {OLLAMA_URL} | Model: {OLLAMA_MODEL}")
 
 # ── Campus + Browser Helpers ──
@@ -179,50 +179,123 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
 # ================================================================
 # AI EVALUATION ENGINE — Ollama
 # ================================================================
-def evaluate_answer(question, student_answer, max_marks):
-    if not student_answer or len(student_answer.strip()) < 5:
+def evaluate_answer(question, student_answer, max_marks, model_answer=""):
+    """
+    Strict AI evaluation using deepseek-r1:8b.
+    - model_answer se compare karta hai (admin ka reference answer)
+    - Keyword stuffing / copy-paste detect karta hai → 0 marks
+    - Agar student ka answer meaningful nahi hai → 0 marks
+    """
+    student_answer = (student_answer or "").strip()
+    model_answer   = (model_answer   or "").strip()
+
+    # Too short → immediate 0
+    if len(student_answer) < 10:
         return 0, "Answer too short or not provided."
-    prompt = f"""You are a strict but fair academic examiner evaluating a student's answer.
 
-Question: {question}
+    # ── Pre-check: Keyword stuffing detection ──
+    # Agar student ne same word 3+ baar likha aur total words < 15
+    words = student_answer.lower().split()
+    if len(words) > 0:
+        from collections import Counter
+        word_counts = Counter(words)
+        most_common_word, most_common_count = word_counts.most_common(1)[0]
+        # Agar koi ek word overall words ka 40%+ hai → stuffing
+        stuffing_ratio = most_common_count / len(words)
+        if stuffing_ratio >= 0.40 and len(words) < 30:
+            return 0, f"Keyword stuffing detected — '{most_common_word}' repeated excessively."
 
-Student's Answer: {student_answer}
+    # ── Build reference section for prompt ──
+    if model_answer:
+        reference_section = (
+            "REFERENCE ANSWER (Admin's Model Answer):\n"
+            + model_answer
+            + "\n\n"
+        )
+    else:
+        reference_section = ""
 
-Maximum Marks: {max_marks}
+    # Build prompt without triple quotes inside f-string
+    student_ans_block = '"' + student_answer + '"'
+    prompt = f"""You are a strict academic examiner for a university exam. Your job is to evaluate a student's answer against the reference answer provided by the teacher.
 
-Instructions:
-- Evaluate the answer purely on conceptual correctness, completeness, and clarity.
-- Award marks out of {max_marks}. Use 0.5 increments (e.g. 0, 0.5, 1, 1.5 ... {max_marks}).
-- Be strict — partial answers should get partial marks.
-- Write a SHORT one-line feedback (max 15 words) explaining the score.
+QUESTION:
+{question}
 
-Respond in EXACTLY this format (nothing else):
+{reference_section}STUDENT'S ANSWER:
+{student_ans_block}
+
+MAXIMUM MARKS: {max_marks}
+
+STRICT EVALUATION RULES — follow ALL of these:
+1. Compare student's answer DIRECTLY with the reference answer (if provided).
+2. Award marks ONLY for content that is conceptually correct AND relevant to the question.
+3. Give ZERO marks if:
+   - Student has only written keywords/terms without explanation (e.g. just "Operating System" repeated).
+   - Student's answer has no meaningful connection to the reference answer or question.
+   - Answer is gibberish, random text, or copy-pasted irrelevant content.
+   - Answer mentions correct keywords but shows NO understanding of the concept.
+4. Award PARTIAL marks if:
+   - Some points are correct but incomplete compared to reference answer.
+   - Answer shows partial understanding but misses key concepts.
+5. Award FULL marks ONLY if:
+   - Answer covers all key points from the reference answer.
+   - Explanation is clear and conceptually accurate.
+6. Marks must be between 0 and {max_marks} in 0.5 increments.
+
+Respond in EXACTLY this format — no extra text, no explanation outside format:
 SCORE: <number>
-FEEDBACK: <one line>"""
+FEEDBACK: <one concise line, max 20 words, explaining why this score was given>"""
+
     try:
-        resp = requests.post(OLLAMA_URL, json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False, "options": {"temperature": 0.1, "num_predict": 60}}, timeout=60)
+        resp = requests.post(
+            OLLAMA_URL,
+            json={
+                "model":  OLLAMA_MODEL,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,   # low temp = consistent, deterministic grading
+                    "num_predict": 120,   # enough for score + feedback
+                    "top_p": 0.9,
+                    "repeat_penalty": 1.1
+                }
+            },
+            timeout=90  # deepseek-r1 needs more time (reasoning model)
+        )
         resp.raise_for_status()
         raw = resp.json().get("response", "").strip()
-        score = 0.0
+
+        # deepseek-r1 wraps thinking in <think>...</think> — strip it
+        import re as _re
+        raw = _re.sub(r"<think>.*?</think>", "", raw, flags=_re.DOTALL).strip()
+
+        score    = 0.0
         feedback = "Evaluated by AI."
+
         for line in raw.splitlines():
             line = line.strip()
+            if not line:
+                continue
             if line.upper().startswith("SCORE:"):
                 try:
-                    val = float(line.split(":", 1)[1].strip().split()[0])
+                    val   = float(line.split(":", 1)[1].strip().split()[0])
                     score = max(0.0, min(float(max_marks), round(val * 2) / 2))
                 except Exception:
                     score = 0.0
             elif line.upper().startswith("FEEDBACK:"):
-                feedback = line.split(":", 1)[1].strip()
-        print(f"[Ollama] → {score}/{max_marks} | {feedback}")
+                feedback = line.split(":", 1)[1].strip()[:200]
+
+        print(f"[AI Eval] → {score}/{max_marks} | {feedback}")
         return score, feedback
+
     except requests.exceptions.ConnectionError:
         return 0, "Evaluation failed — Ollama server not reachable."
     except requests.exceptions.Timeout:
-        return 0, "Evaluation timed out. Please retry."
+        return 0, "Evaluation timed out — please retry via Admin panel."
     except Exception as e:
-        return 0, f"Evaluation error: {str(e)[:50]}"
+        print(f"[AI Eval] Error: {e}")
+        return 0, f"Evaluation error: {str(e)[:60]}"
 
 # ── Background Evaluation Thread ──
 def run_background_evaluation(student_id, exam_id, app_context):
@@ -230,17 +303,23 @@ def run_background_evaluation(student_id, exam_id, app_context):
         try:
             conn   = get_db_connection()
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("""SELECT a.id, a.answer, q.question_text, q.marks, q.question_type
+            # FIX: correct_answer (model answer) bhi fetch karo
+            cursor.execute("""SELECT a.id, a.answer, q.question_text, q.marks,
+                                     q.question_type, q.correct_answer AS model_answer
                 FROM answers a JOIN questions q ON a.question_id = q.id
                 WHERE a.student_id=%s AND a.exam_id=%s AND q.question_type='theory' AND a.score IS NULL
             """, (student_id, exam_id))
             theory_answers = cursor.fetchall()
             for ans in theory_answers:
                 student_answer = (ans['answer'] or '').strip()
+                model_answer   = (ans['model_answer'] or '').strip()
                 if not student_answer or len(student_answer) < 10:
                     score, feedback = 0, "No answer submitted or too short."
                 else:
-                    score, feedback = evaluate_answer(ans['question_text'], student_answer, ans['marks'])
+                    # Pass model_answer to strict evaluator
+                    score, feedback = evaluate_answer(
+                        ans['question_text'], student_answer, ans['marks'], model_answer
+                    )
                 cursor.execute("UPDATE answers SET score=%s, feedback=%s WHERE id=%s", (round(score, 1), feedback, ans['id']))
             conn.commit()
             cursor.execute("SELECT COALESCE(SUM(a.score),0) AS total FROM answers a WHERE a.student_id=%s AND a.exam_id=%s", (student_id, exam_id))
@@ -954,14 +1033,19 @@ def delete_student(id):
 def run_ai_check():
     conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT answers.id, answers.answer, answers.student_id, answers.exam_id, questions.question_text, questions.marks FROM answers JOIN questions ON answers.question_id=questions.id WHERE answers.score IS NULL AND questions.question_type='theory'")
+    # FIX: correct_answer (model answer) bhi select karo
+    cursor.execute("""SELECT answers.id, answers.answer, answers.student_id, answers.exam_id,
+                             questions.question_text, questions.marks, questions.correct_answer AS model_answer
+                      FROM answers JOIN questions ON answers.question_id=questions.id
+                      WHERE answers.score IS NULL AND questions.question_type='theory'""")
     records = cursor.fetchall()
     for r in records:
         student_answer = (r["answer"] or "").strip()
+        model_answer   = (r["model_answer"] or "").strip()
         if not student_answer or len(student_answer) < 10:
             cursor.execute("UPDATE answers SET score=%s, feedback=%s WHERE id=%s", (0, "No answer submitted.", r["id"]))
             continue
-        score, feedback = evaluate_answer(r["question_text"], student_answer, r["marks"])
+        score, feedback = evaluate_answer(r["question_text"], student_answer, r["marks"], model_answer)
         cursor.execute("UPDATE answers SET score=%s, feedback=%s WHERE id=%s", (round(score, 1), feedback, r["id"]))
     conn.commit()
     cursor.execute("SELECT DISTINCT answers.student_id, answers.exam_id FROM answers JOIN questions ON answers.question_id=questions.id WHERE questions.question_type='theory'")
@@ -1022,8 +1106,122 @@ from ultralytics import YOLO as _YOLO
 try:    phone_model = _YOLO("yolov8n.pt")
 except Exception as e: print("YOLO Load Error:", e); phone_model = None
 
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-eye_cascade  = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+# ── Multiple cascades for robust face detection ──
+_cascade_dir = cv2.data.haarcascades
+face_cascade_default = cv2.CascadeClassifier(_cascade_dir + 'haarcascade_frontalface_default.xml')
+face_cascade_alt2    = cv2.CascadeClassifier(_cascade_dir + 'haarcascade_frontalface_alt2.xml')
+face_cascade_profile = cv2.CascadeClassifier(_cascade_dir + 'haarcascade_profileface.xml')
+eye_cascade          = cv2.CascadeClassifier(_cascade_dir + 'haarcascade_eye.xml')
+
+# ── CLAHE for contrast enhancement (dark rooms, uneven lighting) ──
+_clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+
+def _detect_all_faces(gray):
+    """
+    Production-level multi-cascade face detection.
+    Detects frontal + partial + side profile faces.
+    Uses NMS (groupRectangles) to deduplicate overlapping boxes.
+    Returns list of unique face rectangles.
+    """
+    # Contrast enhance — works better in dim/uneven lighting
+    gray_eq = _clahe.apply(gray)
+
+    all_rects = []
+
+    # Pass 1: Default cascade — best for clear frontal faces
+    f1 = face_cascade_default.detectMultiScale(
+        gray_eq, scaleFactor=1.05, minNeighbors=3,
+        minSize=(40, 40), flags=cv2.CASCADE_SCALE_IMAGE
+    )
+    if len(f1) > 0:
+        all_rects.extend(f1.tolist())
+
+    # Pass 2: alt2 cascade — partial/turned faces, better at angles
+    f2 = face_cascade_alt2.detectMultiScale(
+        gray_eq, scaleFactor=1.05, minNeighbors=3,
+        minSize=(40, 40), flags=cv2.CASCADE_SCALE_IMAGE
+    )
+    if len(f2) > 0:
+        all_rects.extend(f2.tolist())
+
+    # Pass 3: Profile cascade — side-on faces (left)
+    f3 = face_cascade_profile.detectMultiScale(
+        gray_eq, scaleFactor=1.05, minNeighbors=3,
+        minSize=(40, 40), flags=cv2.CASCADE_SCALE_IMAGE
+    )
+    if len(f3) > 0:
+        all_rects.extend(f3.tolist())
+
+    # Pass 4: Profile cascade — side-on faces (right, flipped)
+    gray_flip = cv2.flip(gray_eq, 1)
+    f4 = face_cascade_profile.detectMultiScale(
+        gray_flip, scaleFactor=1.05, minNeighbors=3,
+        minSize=(40, 40), flags=cv2.CASCADE_SCALE_IMAGE
+    )
+    if len(f4) > 0:
+        h, w = gray.shape
+        for (x, y, fw, fh) in f4.tolist():
+            all_rects.append([w - x - fw, y, fw, fh])  # flip x back
+
+    if not all_rects:
+        return []
+
+    # NMS: groupRectangles merges overlapping/duplicate detections
+    # groupThreshold=1 means keep if detected by at least 2 rectangles
+    try:
+        deduped, _ = cv2.groupRectangles(
+            [list(r) for r in all_rects * 2],  # *2 required by API
+            groupThreshold=1,
+            eps=0.3
+        )
+        if len(deduped) > 0:
+            return deduped.tolist()
+    except Exception:
+        pass
+
+    # Fallback: simple overlap-based dedup if groupRectangles fails
+    unique = []
+    for rect in all_rects:
+        x1, y1, w1, h1 = rect
+        is_dup = False
+        for ux, uy, uw, uh in unique:
+            # IoU overlap check
+            ix = max(x1, ux); iy = max(y1, uy)
+            iw = min(x1+w1, ux+uw) - ix
+            ih = min(y1+h1, uy+uh) - iy
+            if iw > 0 and ih > 0:
+                overlap = (iw * ih) / min(w1*h1, uw*uh)
+                if overlap > 0.4:
+                    is_dup = True
+                    break
+        if not is_dup:
+            unique.append(rect)
+    return unique
+
+# ── LOG VIOLATION (called from JS/Electron during exam)
+@app.route("/log_violation", methods=["POST"])
+@login_required("student")
+def log_violation():
+    """Store violation into DB — called by start_exam.html JS"""
+    try:
+        data       = request.get_json() or {}
+        student_id = session.get("student_id")
+        exam_id    = data.get("exam_id")
+        v_type     = str(data.get("type",    "unknown"))[:100]
+        details    = str(data.get("details", ""))[:500]
+        if not student_id or not exam_id:
+            return jsonify({"ok": False}), 400
+        conn   = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO exam_violations (student_id, exam_id, violation_type, details) VALUES (%s,%s,%s,%s)",
+            (student_id, exam_id, v_type, details)
+        )
+        conn.commit(); cursor.close(); conn.close()
+        return jsonify({"ok": True})
+    except Exception as e:
+        print(f"[Violation] DB error: {e}")
+        return jsonify({"ok": False}), 500
 
 # ── AI PROCTORING — DETECT CHEATING
 @app.route("/detect_cheating", methods=["POST"])
@@ -1040,24 +1238,61 @@ def detect_cheating():
         img   = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
             return jsonify({"cheating": False})
-        gray  = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(100,100))
-        if len(faces) == 0: return jsonify({"cheating": True, "reason": "Face not visible"})
-        if len(faces) > 1:  return jsonify({"cheating": True, "reason": f"Multiple faces ({len(faces)})"})
-        x, y, w, h = faces[0]
-        eyes = eye_cascade.detectMultiScale(gray[y:y+h, x:x+w], 1.1, 3)
-        if len(eyes) == 0:  return jsonify({"cheating": True, "reason": "Eyes not visible"})
-        x_offset = ((x+w/2) - img.shape[1]/2) / (img.shape[1]/2)
-        y_offset = ((y+h/2) - img.shape[0]/2) / (img.shape[0]/2)
-        if x_offset >  0.25: return jsonify({"cheating": True, "reason": "Looking Right"})
-        if x_offset < -0.25: return jsonify({"cheating": True, "reason": "Looking Left"})
-        if y_offset >  0.25: return jsonify({"cheating": True, "reason": "Looking Down"})
-        if y_offset < -0.25: return jsonify({"cheating": True, "reason": "Looking Up"})
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # ── STEP 1: Phone check PEHLE (face check se pehle)
+        # Agar phone check baad mein ho toh face-not-visible pe return ho jaata
+        # aur phone kabhi detect nahi hota
         if phone_model is not None:
-            for r in phone_model(img, verbose=False, conf=0.30):
-                for box in r.boxes:
-                    if phone_model.names[int(box.cls)] in ["cell phone","mobile phone","phone"]:
-                        return jsonify({"cheating": True, "reason": "Mobile phone detected"})
+            try:
+                for result in phone_model(img, verbose=False, conf=0.28):
+                    for box in result.boxes:
+                        cls_name = phone_model.names[int(box.cls)].lower()
+                        if any(k in cls_name for k in ["cell phone", "mobile", "phone"]):
+                            return jsonify({"cheating": True, "reason": "Mobile phone detected"})
+            except Exception as pe:
+                print(f"[Phone Detection] Error: {pe}")
+
+        # ── STEP 2: Multi-cascade face detection
+        # _detect_all_faces uses 4 cascades (frontal default + alt2 + profile L/R)
+        # + CLAHE preprocessing + NMS deduplication
+        faces = _detect_all_faces(gray)
+
+        if len(faces) == 0:
+            return jsonify({"cheating": True, "reason": "Face not visible"})
+
+        if len(faces) > 1:
+            return jsonify({"cheating": True, "reason": f"Multiple people detected ({len(faces)} faces)"})
+
+        # ── STEP 3: Eye + gaze check on the single detected face ──
+        x, y, w, h = faces[0]
+        # Clamp to image bounds
+        x, y = max(0, x), max(0, y)
+        w = min(w, img.shape[1] - x)
+        h = min(h, img.shape[0] - y)
+
+        face_roi = gray[y:y+h, x:x+w]
+        if face_roi.size == 0:
+            return jsonify({"cheating": False})
+
+        eyes = eye_cascade.detectMultiScale(
+            face_roi, scaleFactor=1.1, minNeighbors=3, minSize=(15, 15)
+        )
+        if len(eyes) == 0:
+            return jsonify({"cheating": True, "reason": "Eyes not visible"})
+
+        img_cx = img.shape[1] / 2
+        img_cy = img.shape[0] / 2
+        face_cx = x + w / 2
+        face_cy = y + h / 2
+        x_offset = (face_cx - img_cx) / img_cx
+        y_offset = (face_cy - img_cy) / img_cy
+
+        if x_offset >  0.30: return jsonify({"cheating": True, "reason": "Looking Right"})
+        if x_offset < -0.30: return jsonify({"cheating": True, "reason": "Looking Left"})
+        if y_offset >  0.30: return jsonify({"cheating": True, "reason": "Looking Down"})
+        if y_offset < -0.30: return jsonify({"cheating": True, "reason": "Looking Up"})
+
         return jsonify({"cheating": False})
     except Exception as e:
         print("AI Error:", e)
@@ -1498,6 +1733,7 @@ def violation_logs():
                 except Exception:
                     logs.append({"timestamp": "—", "type": "LOG", "details": line[:200]})
     logs.reverse()
+    
     return render_template("violation_logs.html", logs=logs)
 
 # ── LOGOUT

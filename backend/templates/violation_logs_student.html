@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OEMS · {{ student.name }} — Violations</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; font-family:'Poppins',sans-serif; }
+        body { background:#f4f7f6; min-height:100vh; padding:2rem;
+               background-image:radial-gradient(circle at top right,#eef2f3,transparent 40%),
+                                radial-gradient(circle at bottom left,#e0eafc,transparent 40%); }
+        .container { max-width:900px; margin:0 auto; animation:fadeIn 0.8s ease-in-out; }
+        .header-section { margin-bottom:2rem; }
+        .header-content { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; }
+        .header-left h1 { font-size:1.8rem; font-weight:600; color:#2c3e50; text-transform:uppercase; letter-spacing:2px; }
+        .header-left p  { color:#6c757d; font-size:0.9rem; margin-top:4px; }
+        .back-btn { display:inline-block; color:#555; text-decoration:none; font-size:0.9rem; border:1px solid #ccc; padding:9px 22px; border-radius:25px; transition:0.3s; background:white; font-weight:500; }
+        .back-btn:hover { background:#f0f0f0; }
+        .split-line { width:100%; height:2px; background:linear-gradient(90deg,transparent,#007bff,#00c6ff,#007bff,transparent); animation:glowingLine 2s infinite alternate; }
+        .breadcrumb { font-size:0.85rem; color:#6c757d; margin-bottom:1.5rem; }
+        .breadcrumb a { color:#007bff; text-decoration:none; }
+        .breadcrumb span { margin:0 6px; }
+
+        /* Student info card */
+        .student-card { background:rgba(255,255,255,0.88); backdrop-filter:blur(12px); border:1px solid rgba(0,0,0,0.05); border-radius:14px; padding:1.4rem 1.8rem; margin-bottom:1.5rem; box-shadow:0 4px 16px rgba(31,38,135,0.07); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+        .student-info h2 { font-size:1.2rem; font-weight:700; color:#2c3e50; }
+        .student-info p  { color:#6c757d; font-size:0.88rem; margin-top:4px; }
+        .student-meta { display:flex; gap:10px; flex-wrap:wrap; }
+        .meta-chip { padding:5px 14px; border-radius:20px; font-size:0.8rem; font-weight:500; }
+        .meta-chip.adm     { background:#e3f2fd; color:#1565c0; font-family:monospace; font-weight:700; }
+        .meta-chip.prog    { background:#f3e5f5; color:#6a1b9a; }
+        .meta-chip.sem     { background:#e8f5e9; color:#2e7d32; }
+        .status-badge { padding:8px 20px; border-radius:25px; font-size:0.9rem; font-weight:700; }
+        .status-terminated { background:#fce4ec; color:#880e4f; border:2px solid #f48fb1; }
+        .status-ok         { background:#e8f5e9; color:#2e7d32; border:2px solid #a5d6a7; }
+
+        /* Summary bar */
+        .summary-bar { background:rgba(255,255,255,0.88); border-radius:12px; padding:1.2rem 1.5rem; margin-bottom:1.5rem; display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:1rem; border:1px solid rgba(0,0,0,0.05); box-shadow:0 2px 10px rgba(31,38,135,0.05); }
+        .summ-item { text-align:center; }
+        .summ-val  { font-size:1.5rem; font-weight:700; color:#2c3e50; }
+        .summ-lbl  { font-size:0.72rem; color:#6c757d; font-weight:500; margin-top:2px; }
+
+        /* Violation timeline */
+        .timeline { position:relative; padding-left:30px; }
+        .timeline::before { content:''; position:absolute; left:12px; top:0; bottom:0; width:2px; background:linear-gradient(180deg,#ef4444,#f87171,#fca5a5); border-radius:1px; }
+        .viol-item { position:relative; margin-bottom:1.2rem; background:rgba(255,255,255,0.88); backdrop-filter:blur(12px); border-radius:12px; padding:1.1rem 1.4rem; border:1px solid rgba(0,0,0,0.05); box-shadow:0 2px 10px rgba(31,38,135,0.06); transition:0.2s; }
+        .viol-item:hover { box-shadow:0 4px 16px rgba(0,0,0,0.1); }
+        .viol-item::before { content:''; position:absolute; left:-24px; top:50%; transform:translateY(-50%); width:14px; height:14px; border-radius:50%; background:white; border:3px solid #ef4444; box-shadow:0 0 0 2px rgba(239,68,68,0.2); }
+        .viol-item.final::before { background:#c62828; border-color:#c62828; }
+        .viol-item.final { border-color:rgba(198,40,40,0.25); background:rgba(255,235,238,0.6); }
+        .viol-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px; }
+        .viol-num  { font-size:0.75rem; font-weight:600; color:#aaa; text-transform:uppercase; letter-spacing:1px; }
+        .viol-time { font-size:0.78rem; color:#6c757d; font-family:monospace; }
+        .viol-type { display:inline-block; padding:4px 12px; border-radius:20px; font-size:0.8rem; font-weight:600; margin-bottom:6px; }
+        .vt-face      { background:#fff3e0; color:#e65100; }
+        .vt-tab       { background:#fce4ec; color:#c62828; }
+        .vt-phone     { background:#f3e5f5; color:#6a1b9a; }
+        .vt-multiple  { background:#ffebee; color:#b71c1c; }
+        .vt-devtools  { background:#e8eaf6; color:#283593; }
+        .vt-terminate { background:#880e4f; color:white; }
+        .vt-other     { background:#f5f5f5; color:#555; }
+        .viol-details { font-size:0.85rem; color:#495057; line-height:1.5; }
+
+        .no-violations { text-align:center; padding:3rem; color:#6c757d; }
+
+        @keyframes fadeIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes glowingLine { from{opacity:0.6} to{opacity:1;box-shadow:0 0 12px rgba(0,198,255,0.6)} }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header-section">
+        <div class="header-content">
+            <div class="header-left">
+                <h1>Student Violations</h1>
+                <p>{{ exam.title }}</p>
+            </div>
+            <a href="/violation_logs/{{ exam.id }}" class="back-btn">← Back to Exam</a>
+        </div>
+        <div class="split-line"></div>
+    </div>
+
+    <div class="breadcrumb">
+        <a href="/admin">Dashboard</a><span>›</span>
+        <a href="/violation_logs">Violation Logs</a><span>›</span>
+        <a href="/violation_logs/{{ exam.id }}">{{ exam.title }}</a><span>›</span>
+        <strong>{{ student.name }}</strong>
+    </div>
+
+    <!-- Student Info -->
+    <div class="student-card">
+        <div class="student-info">
+            <h2>{{ student.name }}</h2>
+            <p>{{ exam.title }} · {{ exam.branch }}</p>
+        </div>
+        <div class="student-meta">
+            <span class="meta-chip adm">{{ student.admission_no }}</span>
+            <span class="meta-chip prog">{{ student.program }}</span>
+            <span class="meta-chip sem">Sem {{ student.semester }}</span>
+        </div>
+        {% if result %}
+            {% if result.submission_status in ['Terminated', 'terminated'] or (violations|selectattr('violation_type','equalto','force_terminate')|list|length > 0) %}
+            <span class="status-badge status-terminated">🚫 Exam Terminated</span>
+            {% else %}
+            <span class="status-badge status-ok">✓ Exam Submitted</span>
+            {% endif %}
+        {% endif %}
+    </div>
+
+    <!-- Summary -->
+    <div class="summary-bar">
+        <div class="summ-item">
+            <div class="summ-val" style="color:#c62828;">{{ total }}</div>
+            <div class="summ-lbl">Total Violations</div>
+        </div>
+        <div class="summ-item">
+            <div class="summ-val">5</div>
+            <div class="summ-lbl">Max Allowed</div>
+        </div>
+        <div class="summ-item">
+            <div class="summ-val" style="color:{% if total >= 5 %}#c62828{% elif total >= 3 %}#e65100{% else %}#2e7d32{% endif %};">
+                {{ 5 - total if total < 5 else 0 }}
+            </div>
+            <div class="summ-lbl">Remaining</div>
+        </div>
+        <div class="summ-item">
+            <div class="summ-val" style="color:#880e4f;">
+                {{ violations|selectattr('violation_type','equalto','force_terminate')|list|length }}
+            </div>
+            <div class="summ-lbl">Terminations</div>
+        </div>
+    </div>
+
+    <!-- Violation Timeline -->
+    {% if violations %}
+    <div class="timeline">
+        {% for v in violations %}
+        <div class="viol-item {% if v.violation_type == 'force_terminate' %}final{% endif %}">
+            <div class="viol-top">
+                <div>
+                    <span class="viol-num">Violation #{{ v.violation_no }}</span>
+                    {% if v.violation_type == 'force_terminate' %}
+                    <span class="viol-type vt-terminate">🚫 EXAM TERMINATED</span>
+                    {% elif 'face' in v.violation_type|lower or 'looking' in (v.details or '')|lower %}
+                    <span class="viol-type vt-face">👁 Face / Gaze Alert</span>
+                    {% elif 'tab' in v.violation_type|lower or 'switch' in (v.details or '')|lower %}
+                    <span class="viol-type vt-tab">🔄 Tab Switch</span>
+                    {% elif 'phone' in (v.details or '')|lower or 'mobile' in (v.details or '')|lower %}
+                    <span class="viol-type vt-phone">📱 Phone Detected</span>
+                    {% elif 'multiple' in (v.details or '')|lower %}
+                    <span class="viol-type vt-multiple">👥 Multiple Faces</span>
+                    {% elif 'devtool' in (v.details or '')|lower or 'developer' in (v.details or '')|lower %}
+                    <span class="viol-type vt-devtools">🛠 DevTools</span>
+                    {% else %}
+                    <span class="viol-type vt-other">⚠ {{ v.violation_type[:30] }}</span>
+                    {% endif %}
+                </div>
+                <span class="viol-time">{{ v.created_at.strftime('%d %b %Y, %I:%M:%S %p') if v.created_at else '—' }}</span>
+            </div>
+            <div class="viol-details">
+                {{ v.details or 'No additional details recorded.' }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="no-violations">No detailed violation records found for this student.</div>
+    {% endif %}
+</div>
+</body>
+</html>

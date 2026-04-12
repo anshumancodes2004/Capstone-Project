@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OEMS · {{ exam.title }} — Violations</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; font-family:'Poppins',sans-serif; }
+        body { background:#f4f7f6; min-height:100vh; padding:2rem;
+               background-image:radial-gradient(circle at top right,#eef2f3,transparent 40%),
+                                radial-gradient(circle at bottom left,#e0eafc,transparent 40%); }
+        .container { max-width:1100px; margin:0 auto; animation:fadeIn 0.8s ease-in-out; }
+        .header-section { margin-bottom:2rem; }
+        .header-content { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; }
+        .header-left h1 { font-size:1.8rem; font-weight:600; color:#2c3e50; text-transform:uppercase; letter-spacing:2px; }
+        .header-left p  { color:#6c757d; font-size:0.9rem; margin-top:4px; }
+        .back-btn { display:inline-block; color:#555; text-decoration:none; font-size:0.9rem; border:1px solid #ccc; padding:9px 22px; border-radius:25px; transition:0.3s; background:white; font-weight:500; }
+        .back-btn:hover { background:#f0f0f0; }
+        .split-line { width:100%; height:2px; background:linear-gradient(90deg,transparent,#007bff,#00c6ff,#007bff,transparent); animation:glowingLine 2s infinite alternate; }
+        .breadcrumb { font-size:0.85rem; color:#6c757d; margin-bottom:1.5rem; }
+        .breadcrumb a { color:#007bff; text-decoration:none; }
+        .breadcrumb span { margin:0 6px; }
+        .stats-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+        .stat-pill { background:white; border-radius:12px; padding:1rem; text-align:center; box-shadow:0 2px 10px rgba(31,38,135,0.05); border:1px solid rgba(0,0,0,0.04); }
+        .stat-val { font-size:1.6rem; font-weight:600; color:#2c3e50; }
+        .stat-lbl { font-size:0.75rem; color:#6c757d; font-weight:500; margin-top:2px; }
+        /* Table */
+        .table-wrapper { background:rgba(255,255,255,0.88); backdrop-filter:blur(12px); border:1px solid rgba(0,0,0,0.05); border-radius:15px; overflow-x:auto; box-shadow:0 8px 32px rgba(31,38,135,0.07); }
+        .table-header { padding:1.2rem 1.5rem; border-bottom:1px solid #e9ecef; display:flex; justify-content:space-between; align-items:center; }
+        .table-title { font-size:1.05rem; font-weight:600; color:#2c3e50; }
+        table { width:100%; border-collapse:collapse; text-align:left; }
+        th { background:rgba(0,123,255,0.05); color:#0056b3; padding:0.9rem 1rem; font-weight:600; letter-spacing:0.5px; border-bottom:2px solid #e9ecef; white-space:nowrap; font-size:0.85rem; }
+        td { padding:0.85rem 1rem; border-bottom:1px solid #e9ecef; color:#495057; vertical-align:middle; font-size:0.85rem; }
+        tr:last-child td { border-bottom:none; }
+        tr:hover td { background:rgba(0,123,255,0.02); }
+        .sid { font-family:monospace; font-weight:600; color:#007bff; background:#e3f2fd; padding:3px 8px; border-radius:6px; font-size:0.8rem; }
+        /* Violation count bar */
+        .viol-bar-wrap { display:flex; align-items:center; gap:8px; }
+        .viol-bar { height:6px; border-radius:3px; background:#ffcdd2; overflow:hidden; width:80px; }
+        .viol-bar-fill { height:100%; border-radius:3px; background:#c62828; }
+        .viol-count { font-family:monospace; font-weight:700; font-size:0.9rem; }
+        .viol-count.max { color:#c62828; }
+        .viol-count.high { color:#e65100; }
+        .viol-count.low  { color:#2e7d32; }
+        /* Terminated badge */
+        .badge { padding:3px 10px; border-radius:20px; font-size:0.75rem; font-weight:600; display:inline-block; }
+        .badge-terminated { background:#fce4ec; color:#880e4f; }
+        .badge-ok { background:#e8f5e9; color:#2e7d32; }
+        /* View button */
+        .btn-view { padding:5px 14px; background:rgba(0,123,255,0.08); color:#007bff; border-radius:20px; font-size:0.8rem; font-weight:600; text-decoration:none; transition:0.2s; white-space:nowrap; }
+        .btn-view:hover { background:#007bff; color:white; }
+        .empty-state { text-align:center; padding:3rem; color:#6c757d; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes glowingLine { from{opacity:0.6} to{opacity:1;box-shadow:0 0 12px rgba(0,198,255,0.6)} }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header-section">
+        <div class="header-content">
+            <div class="header-left">
+                <h1>Exam Violations</h1>
+                <p>{{ exam.title }} — {{ exam.branch }}</p>
+            </div>
+            <a href="/violation_logs" class="back-btn">← All Exams</a>
+        </div>
+        <div class="split-line"></div>
+    </div>
+
+    <div class="breadcrumb">
+        <a href="/admin">Dashboard</a><span>›</span>
+        <a href="/violation_logs">Violation Logs</a><span>›</span>
+        <strong>{{ exam.title }}</strong>
+    </div>
+
+    {% if students %}
+    <div class="stats-strip">
+        <div class="stat-pill">
+            <div class="stat-val" style="color:#e65100;">{{ students|length }}</div>
+            <div class="stat-lbl">Students Flagged</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-val" style="color:#c62828;">{{ students|sum(attribute='total_violations') }}</div>
+            <div class="stat-lbl">Total Violations</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-val" style="color:#880e4f;">{{ students|selectattr('terminated','gt',0)|list|length }}</div>
+            <div class="stat-lbl">Exam Terminated</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-val" style="color:#2e7d32;">{{ students|selectattr('terminated','eq',0)|list|length }}</div>
+            <div class="stat-lbl">Completed (with violations)</div>
+        </div>
+    </div>
+
+    <div class="table-wrapper">
+        <div class="table-header">
+            <div class="table-title">Students with Security Violations</div>
+            <span style="font-size:0.82rem;color:#6c757d;">{{ students|length }} student(s)</span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Student</th>
+                    <th>Admission No</th>
+                    <th>Program / Sem</th>
+                    <th>Violations</th>
+                    <th>Status</th>
+                    <th>First Violation</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in students %}
+                <tr>
+                    <td>
+                        <span style="font-weight:600;color:#2c3e50;">{{ s.name }}</span>
+                    </td>
+                    <td><span class="sid">{{ s.admission_no }}</span></td>
+                    <td style="color:#6c757d;">{{ s.program }} · Sem {{ s.semester }}</td>
+                    <td>
+                        <div class="viol-bar-wrap">
+                            <div class="viol-bar">
+                                <div class="viol-bar-fill" style="width:{{ [s.total_violations * 20, 100]|min }}%"></div>
+                            </div>
+                            <span class="viol-count {% if s.total_violations >= 5 %}max{% elif s.total_violations >= 3 %}high{% else %}low{% endif %}">
+                                {{ s.total_violations }}/5
+                            </span>
+                        </div>
+                    </td>
+                    <td>
+                        {% if s.terminated > 0 %}
+                        <span class="badge badge-terminated">🚫 Terminated</span>
+                        {% else %}
+                        <span class="badge badge-ok">✓ Completed</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size:0.82rem;color:#6c757d;font-family:monospace;">
+                        {{ s.first_violation.strftime('%d %b, %H:%M') if s.first_violation else '—' }}
+                    </td>
+                    <td>
+                        <a href="/violation_logs/{{ exam.id }}/{{ s.student_id }}" class="btn-view">
+                            View Details →
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% else %}
+    <div class="empty-state">
+        <div style="font-size:2rem;margin-bottom:10px;">✅</div>
+        <div style="font-size:1rem;font-weight:500;color:#2c3e50;">No violations for this exam</div>
+    </div>
+    {% endif %}
+</div>
+</body>
+</html>

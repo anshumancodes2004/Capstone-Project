@@ -11,6 +11,8 @@
                background-image: radial-gradient(circle at top right, #eef2f3, transparent 40%),
                                  radial-gradient(circle at bottom left, #e0eafc, transparent 40%); }
         .container { max-width: 1300px; margin: 0 auto; animation: fadeIn 0.8s ease-in-out; }
+
+        /* Header */
         .header-section { margin-bottom: 2.5rem; }
         .header-content { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
         .header-title { font-size: 2.2rem; font-weight: 600; color: #2c3e50; text-transform: uppercase; letter-spacing: 2px; }
@@ -20,50 +22,67 @@
         .btn-primary { background: linear-gradient(45deg, #007bff, #00c6ff); color: white; border: none; box-shadow: 0 4px 15px rgba(0,123,255,0.2); }
         .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,123,255,0.4); color: white; }
         .split-line { width: 100%; height: 2px; background: linear-gradient(90deg, transparent, #007bff, #00c6ff, #007bff, transparent); animation: glowingLine 2s infinite alternate; }
+
+        /* Stats */
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
         .stat-card { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); border: 1px solid rgba(0,0,0,0.05); border-radius: 12px; padding: 1.2rem; text-align: center; box-shadow: 0 4px 15px rgba(31,38,135,0.05); transition: 0.3s; }
         .stat-card:hover { transform: translateY(-3px); }
         .stat-val { font-size: 1.7rem; font-weight: 600; color: #2c3e50; }
         .stat-lbl { font-size: 0.78rem; color: #6c757d; font-weight: 500; margin-top: 2px; }
+
+        /* Filters */
         .filters-bar { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); border-radius: 12px; padding: 1rem 1.2rem; margin-bottom: 1.5rem; border: 1px solid rgba(0,0,0,0.05); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
         .search-box { flex: 1; min-width: 220px; padding: 9px 14px; border: 1px solid #e9ecef; border-radius: 25px; font-size: 0.9rem; background: #f8f9fa; transition: 0.3s; outline: none; font-family: 'Poppins',sans-serif; }
         .search-box:focus { border-color: #007bff; background: white; box-shadow: 0 0 0 3px rgba(0,123,255,0.08); }
         .filter-sel { padding: 9px 14px; border: 1px solid #e9ecef; border-radius: 25px; font-size: 0.9rem; background: #f8f9fa; color: #333; cursor: pointer; outline: none; font-family: 'Poppins',sans-serif; }
         .export-btn { padding: 9px 18px; background: white; border: 1px solid #007bff; border-radius: 25px; color: #007bff; font-size: 0.88rem; font-weight: 500; cursor: pointer; transition: 0.3s; font-family: 'Poppins',sans-serif; }
         .export-btn:hover { background: #007bff; color: white; }
+
+        /* Table */
         .table-wrapper { background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); border: 1px solid rgba(0,0,0,0.05); border-radius: 15px; overflow-x: auto; box-shadow: 0 8px 32px rgba(31,38,135,0.07); }
         .table-header { padding: 1.2rem 1.5rem; border-bottom: 1px solid #e9ecef; display: flex; justify-content: space-between; align-items: center; }
         .table-title { font-size: 1.05rem; font-weight: 600; color: #2c3e50; }
         .record-badge { background: #e3f2fd; color: #0056b3; padding: 3px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
+
         table { width: 100%; border-collapse: collapse; text-align: left; }
         th { background: rgba(0,123,255,0.05); color: #0056b3; padding: 0.9rem 1rem; font-weight: 600; letter-spacing: 0.5px; border-bottom: 2px solid #e9ecef; white-space: nowrap; font-size: 0.85rem; }
         td { padding: 0.9rem 1rem; border-bottom: 1px solid #e9ecef; color: #495057; vertical-align: middle; font-size: 0.88rem; }
         tr:last-child td { border-bottom: none; }
         tr:hover td { background: rgba(0,123,255,0.02); }
+
         .sid { font-family: monospace; font-weight: 600; color: #007bff; background: #e3f2fd; padding: 3px 8px; border-radius: 6px; font-size: 0.8rem; }
         .sname { font-weight: 600; color: #2c3e50; }
         .no-email { color: #adb5bd; font-style: italic; }
+
+        /* FIX: Delete button — POST form, not GET link */
         .del-form { display: inline; }
-        .btn-del { background: #ffebee; color: #c62828; border: none; padding: 5px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 500; cursor: pointer; transition: 0.2s; font-family: 'Poppins',sans-serif; }
+        .btn-del { background: #ffebee; color: #c62828; border: none; padding: 5px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 500; cursor: pointer; transition: 0.2s; font-family: 'Poppins',sans-serif; }
         .btn-del:hover { background: #c62828; color: white; }
-        /* Resend Credentials button */
-        .btn-resend { background: #e8f5e9; color: #2e7d32; border: none; padding: 5px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 500; cursor: pointer; transition: 0.2s; font-family: 'Poppins',sans-serif; margin-right: 4px; }
-        .btn-resend:hover { background: #2e7d32; color: white; }
-        .btn-resend:disabled { opacity: 0.45; cursor: not-allowed; background: #f5f5f5; color: #aaa; }
+
         .empty-state { text-align: center; padding: 3rem; color: #6c757d; }
-        #toast { position: fixed; bottom: 24px; right: 24px; background: #2c3e50; color: white; padding: 12px 20px; border-radius: 10px; font-size: 0.88rem; font-weight: 500; opacity: 0; transform: translateY(20px); transition: all 0.3s; z-index: 9999; pointer-events: none; max-width: 340px; }
+
+        /* Toast */
+        #toast { position: fixed; bottom: 24px; right: 24px; background: #2c3e50; color: white; padding: 12px 20px; border-radius: 10px; font-size: 0.88rem; font-weight: 500; opacity: 0; transform: translateY(20px); transition: all 0.3s; z-index: 9999; pointer-events: none; }
         #toast.show { opacity: 1; transform: translateY(0); }
         #toast.success { background: #2e7d32; }
         #toast.error   { background: #c62828; }
-        @keyframes fadeIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+
+        @keyframes fadeIn      { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
         @keyframes glowingLine { from{opacity:0.6} to{opacity:1;box-shadow:0 0 12px rgba(0,198,255,0.6)} }
-        @media(max-width:768px) { .header-content{flex-direction:column;align-items:flex-start;gap:1rem} .filters-bar{flex-direction:column;align-items:stretch} td,th{padding:0.7rem} }
+        @media (max-width:768px) {
+            .header-content { flex-direction:column; align-items:flex-start; gap:1rem; }
+            .filters-bar { flex-direction:column; align-items:stretch; }
+            td, th { padding:0.7rem; }
+        }
     </style>
 </head>
 <body>
+
 <div id="toast"></div>
+
 <div class="container">
 
+    <!-- Header -->
     <div class="header-section">
         <div class="header-content">
             <h1 class="header-title">Student Manager</h1>
@@ -75,6 +94,7 @@
         <div class="split-line"></div>
     </div>
 
+    <!-- Stats -->
     <div class="stats-grid">
         <div class="stat-card">
             <div class="stat-val">{{ students|length if students else 0 }}</div>
@@ -100,13 +120,17 @@
         </div>
     </div>
 
+    <!-- Filters -->
     <div class="filters-bar">
         <input class="search-box" id="searchInput" type="text" placeholder="Search by name, admission no, or email...">
         <select class="filter-sel" id="programFilter">
             <option value="all">All Programs</option>
-            <option value="BCA">BCA</option><option value="MCA">MCA</option>
-            <option value="BBA">BBA</option><option value="MBA">MBA</option>
-            <option value="BTECH">B.Tech</option><option value="MTECH">M.Tech</option>
+            <option value="BCA">BCA</option>
+            <option value="MCA">MCA</option>
+            <option value="BBA">BBA</option>
+            <option value="MBA">MBA</option>
+            <option value="BTECH">B.Tech</option>
+            <option value="MTECH">M.Tech</option>
         </select>
         <select class="filter-sel" id="semesterFilter">
             <option value="all">All Semesters</option>
@@ -117,13 +141,10 @@
         <button class="export-btn" onclick="exportCSV()">📥 Export CSV</button>
     </div>
 
+    <!-- Table -->
     <div class="table-wrapper">
         <div class="table-header">
-            <div class="table-title">Student Records
-                <span style="font-size:0.78rem;color:#6c757d;font-weight:400;margin-left:8px;">
-                    <!-- 📧 = Send/Resend login credentials via email -->
-                </span>
-            </div>
+            <div class="table-title">Student Records</div>
             <span class="record-badge" id="recordCount">{{ students|length if students else 0 }} Records</span>
         </div>
         <table>
@@ -132,10 +153,10 @@
                     <th>ID</th>
                     <th>Name</th>
                     <th>Admission No</th>
-                    <th>Program (Branch)</th>
+                    <th>Program (branch)</th>
                     <th>Semester</th>
                     <th>Email</th>
-                    <th>Actions</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody id="tableBody">
@@ -151,29 +172,12 @@
                         <td><span class="sname">{{ s.name }}</span></td>
                         <td style="font-family:monospace;">{{ s.admission_no }}</td>
                         <td>{{ s.program }} ({{ s.branch }})</td>
-                        <td>Sem {{ s.semester }}</td>
+                        <td>Sem ({{ s.semester }})</td>
+                        <td>{% if s.email %}{{ s.email }}{% else %}<span class="no-email">Not set</span>{% endif %}</td>
                         <td>
-                            {% if s.email %}
-                                {{ s.email }}
-                            {% else %}
-                                <span class="no-email">Not set</span>
-                            {% endif %}
-                        </td>
-                        <td style="white-space:nowrap;">
-                            {% if s.email %}
-                            <button class="btn-resend"
-                                    id="resend-{{ s.id }}"
-                                    onclick="resendCredentials({{ s.id }}, '{{ s.name | replace("'", "\\'") }}', '{{ s.email }}')"
-                                    title="Send login credentials to {{ s.email }}">
-                                📧 Resend
-                            </button>
-                            {% else %}
-                            <button class="btn-resend" disabled title="No email on record">
-                                📧 No Email
-                            </button>
-                            {% endif %}
+                            <!-- FIX: POST form instead of GET link -->
                             <form class="del-form" method="POST" action="/delete_student/{{ s.id }}"
-                                  onsubmit="return confirmDelete(event, '{{ s.name | replace("'", "\\'") }}')">
+                                  onsubmit="return confirmDelete(event, '{{ s.name }}')">
                                 <button type="submit" class="btn-del">Remove</button>
                             </form>
                         </td>
@@ -200,46 +204,18 @@
         const t = document.getElementById('toast');
         t.textContent = msg; t.className = 'show ' + type;
         clearTimeout(t._t);
-        t._t = setTimeout(() => t.className = '', 4000);
+        t._t = setTimeout(() => t.className = '', 3000);
     }
 
     function confirmDelete(event, name) {
-        if (!confirm(`Remove student: "${name}"?\n\nThis will also delete all exam answers and results. Cannot be undone.`)) {
+        if (!confirm(`Remove student: "${name}"?\n\nThis will also delete all their exam answers and results. This cannot be undone.`)) {
             event.preventDefault(); return false;
         }
         showToast('Removing student...', '');
         return true;
     }
 
-    async function resendCredentials(studentId, name, email) {
-        if (!confirm(`Send login credentials to:\n\nStudent: ${name}\nEmail: ${email}\n\nThis sends Admission No + default password OEMS@12345.\n\nContinue?`)) return;
-
-        const btn = document.getElementById(`resend-${studentId}`);
-        if (btn) { btn.disabled = true; btn.textContent = '⏳ Sending...'; }
-
-        try {
-            const resp = await fetch(`/resend_credentials/${studentId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            const data = await resp.json();
-
-            if (data.success) {
-                showToast(`✓ Credentials sent to ${email}`, 'success');
-                if (btn) { btn.textContent = '✓ Sent'; btn.style.background = '#c8e6c9'; btn.style.color = '#1b5e20'; }
-                setTimeout(() => {
-                    if (btn) { btn.disabled = false; btn.textContent = '📧 Resend'; btn.style.background = ''; btn.style.color = ''; }
-                }, 5000);
-            } else {
-                showToast(`✗ ${data.message}`, 'error');
-                if (btn) { btn.disabled = false; btn.textContent = '📧 Resend'; }
-            }
-        } catch (err) {
-            showToast('Network error. Please try again.', 'error');
-            if (btn) { btn.disabled = false; btn.textContent = '📧 Resend'; }
-        }
-    }
-
+    // Filter
     ['searchInput','programFilter','semesterFilter'].forEach(id => {
         document.getElementById(id)?.addEventListener('input', filterTable);
         document.getElementById(id)?.addEventListener('change', filterTable);
@@ -249,17 +225,21 @@
         const q   = document.getElementById('searchInput').value.toLowerCase();
         const prg = document.getElementById('programFilter').value;
         const sem = document.getElementById('semesterFilter').value;
+        const rows = document.querySelectorAll('.student-row');
         let visible = 0;
-        document.querySelectorAll('.student-row').forEach(row => {
-            const ok = (!q || row.dataset.name.includes(q) || row.dataset.adm.includes(q) || row.dataset.email.includes(q))
-                    && (prg === 'all' || row.dataset.program === prg)
-                    && (sem === 'all' || row.dataset.semester === sem);
-            row.style.display = ok ? '' : 'none';
-            if (ok) visible++;
+
+        rows.forEach(row => {
+            const matchQ = !q || row.dataset.name.includes(q) || row.dataset.adm.includes(q) || row.dataset.email.includes(q);
+            const matchP = prg === 'all' || row.dataset.program === prg;
+            const matchS = sem === 'all' || row.dataset.semester === sem;
+            row.style.display = (matchQ && matchP && matchS) ? '' : 'none';
+            if (matchQ && matchP && matchS) visible++;
         });
+
         document.getElementById('recordCount').textContent = visible + ' Records';
     }
 
+    // Export CSV
     function exportCSV() {
         const rows = [['ID','Name','Admission No','Program','Branch','Semester','Email']];
         document.querySelectorAll('.student-row').forEach(row => {
@@ -276,7 +256,8 @@
             ]);
         });
         const csv = rows.map(r => r.map(v => `"${(v||'').replace(/"/g,'""')}"`).join(',')).join('\n');
-        const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
         a.download = 'oems_students.csv'; a.click();
         showToast('CSV exported!', 'success');
     }

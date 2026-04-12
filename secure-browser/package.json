@@ -7,7 +7,7 @@
         "start": "electron .",
         "build": "electron-builder --mac"
     },
-    "author": "Your Name",
+    "author": "Anshuman",
     "license": "MIT",
     "devDependencies": {
         "electron": "^28.0.0"

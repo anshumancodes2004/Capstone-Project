@@ -117,6 +117,7 @@ app.whenReady().then(() => {
     // ============================================================
     const blockedShortcuts = [
         'CommandOrControl+R',
+        'Command+Option+W',
         'F5',
         'CommandOrControl+Shift+R',
         'F11',
