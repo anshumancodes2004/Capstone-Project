@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OEMS · Violation Logs</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; font-family:'Poppins',sans-serif; }
+        body { background:#f4f7f6; min-height:100vh; padding:2rem;
+               background-image: radial-gradient(circle at top right,#eef2f3,transparent 40%),
+                                 radial-gradient(circle at bottom left,#e0eafc,transparent 40%); }
+        .container { max-width:1100px; margin:0 auto; animation:fadeIn 0.8s ease-in-out; }
+        .header-section { margin-bottom:2rem; }
+        .header-content { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; }
+        .header-title { font-size:2rem; font-weight:600; color:#2c3e50; text-transform:uppercase; letter-spacing:2px; }
+        .back-btn { display:inline-block; color:#555; text-decoration:none; font-size:0.9rem; border:1px solid #ccc; padding:9px 22px; border-radius:25px; transition:0.3s; background:white; font-weight:500; }
+        .back-btn:hover { background:#f0f0f0; color:#111; }
+        .split-line { width:100%; height:2px; background:linear-gradient(90deg,transparent,#007bff,#00c6ff,#007bff,transparent); animation:glowingLine 2s infinite alternate; }
+
+        /* Stats */
+        .stats-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1rem; margin-bottom:1.5rem; }
+        .stat-pill { background:white; border-radius:12px; padding:1rem; text-align:center; box-shadow:0 2px 10px rgba(31,38,135,0.05); border:1px solid rgba(0,0,0,0.04); }
+        .stat-val { font-size:1.6rem; font-weight:600; color:#2c3e50; }
+        .stat-lbl { font-size:0.75rem; color:#6c757d; font-weight:500; margin-top:2px; }
+
+        /* Toolbar */
+        .toolbar { display:flex; gap:12px; margin-bottom:1.2rem; flex-wrap:wrap; align-items:center; }
+        .search-box { flex:1; min-width:200px; padding:9px 14px; border:1px solid #e2e8f0; border-radius:10px; font-size:0.9rem; font-family:'Poppins',sans-serif; background:white; outline:none; transition:0.2s; }
+        .search-box:focus { border-color:#007bff; box-shadow:0 0 0 3px rgba(0,123,255,0.08); }
+        .filter-sel { padding:9px 14px; border:1px solid #e2e8f0; border-radius:10px; font-size:0.9rem; font-family:'Poppins',sans-serif; background:white; outline:none; cursor:pointer; }
+
+        /* Log table */
+        .table-wrapper { background:rgba(255,255,255,0.85); backdrop-filter:blur(12px); border:1px solid rgba(0,0,0,0.05); border-radius:15px; overflow-x:auto; box-shadow:0 8px 32px rgba(31,38,135,0.07); }
+        .table-header { padding:1.2rem 1.5rem; border-bottom:1px solid #e9ecef; display:flex; justify-content:space-between; align-items:center; }
+        .table-title { font-size:1.05rem; font-weight:600; color:#2c3e50; }
+        table { width:100%; border-collapse:collapse; text-align:left; }
+        th { background:rgba(0,123,255,0.05); color:#0056b3; padding:0.9rem 1rem; font-weight:600; letter-spacing:0.5px; border-bottom:2px solid #e9ecef; white-space:nowrap; font-size:0.85rem; }
+        td { padding:0.85rem 1rem; border-bottom:1px solid #e9ecef; color:#495057; vertical-align:middle; font-size:0.85rem; }
+        tr:last-child td { border-bottom:none; }
+        tr:hover td { background:rgba(0,123,255,0.02); }
+
+        /* Type badges */
+        .type-badge { padding:3px 10px; border-radius:20px; font-size:0.75rem; font-weight:600; display:inline-block; }
+        .type-violation { background:#ffebee; color:#c62828; }
+        .type-terminate { background:#fce4ec; color:#880e4f; }
+        .type-blocked    { background:#fff3e0; color:#e65100; }
+        .type-session    { background:#e8f5e9; color:#2e7d32; }
+        .type-other      { background:#f3e5f5; color:#6a1b9a; }
+
+        .empty-state { text-align:center; padding:3rem; color:#6c757d; }
+
+        @keyframes fadeIn { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes glowingLine { from{opacity:0.6} to{opacity:1;box-shadow:0 0 12px rgba(0,198,255,0.6)} }
+        @media(max-width:768px) { .header-content { flex-direction:column; align-items:flex-start; gap:1rem; } }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <div class="header-section">
+        <div class="header-content">
+            <h1 class="header-title">Violation Logs</h1>
+            <a href="/admin" class="back-btn">← Back to Dashboard</a>
+        </div>
+        <div class="split-line"></div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-strip">
+        <div class="stat-pill">
+            <div class="stat-val" id="totalLogs">{{ logs|length }}</div>
+            <div class="stat-lbl">Total Entries</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-val" style="color:#c62828;" id="violationCount">
+                {{ logs|selectattr('type','equalto','exam_violation')|list|length }}
+            </div>
+            <div class="stat-lbl">Violations</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-val" style="color:#880e4f;" id="terminateCount">
+                {{ logs|selectattr('type','equalto','force_terminate')|list|length }}
+            </div>
+            <div class="stat-lbl">Terminations</div>
+        </div>
+        <div class="stat-pill">
+            <div class="stat-val" style="color:#e65100;" id="blockedCount">
+                {{ logs|selectattr('type','in',['BLOCKED shortcut','BLOCKED navigation','BLOCKED new window'])|list|length }}
+            </div>
+            <div class="stat-lbl">Blocked Actions</div>
+        </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <input class="search-box" id="searchBox" type="text" placeholder="Search by session ID, type, or details...">
+        <select class="filter-sel" id="typeFilter" onchange="filterTable()">
+            <option value="">All Types</option>
+            <option value="exam_violation">Violations</option>
+            <option value="force_terminate">Terminations</option>
+            <option value="BLOCKED">Blocked Actions</option>
+            <option value="SESSION">Sessions</option>
+        </select>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrapper">
+        <div class="table-header">
+            <div class="table-title">🔍 Exam Security Log</div>
+            <span style="font-size:0.82rem;color:#6c757d;" id="recordCount">{{ logs|length }} entries</span>
+        </div>
+
+        {% if logs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Timestamp</th>
+                    <th>Type</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody id="logBody">
+                {% for log in logs %}
+                <tr data-type="{{ log.type }}" data-text="{{ log.details|lower }}">
+                    <td style="color:#6c757d;">{{ loop.index }}</td>
+                    <td style="font-family:monospace;font-size:0.8rem;color:#374151;white-space:nowrap;">{{ log.timestamp }}</td>
+                    <td>
+                        {% if 'VIOLATION' in log.type or 'exam_violation' in log.type %}
+                            <span class="type-badge type-violation">Violation</span>
+                        {% elif 'terminate' in log.type|lower %}
+                            <span class="type-badge type-terminate">Terminated</span>
+                        {% elif 'BLOCKED' in log.type %}
+                            <span class="type-badge type-blocked">Blocked</span>
+                        {% elif 'SESSION' in log.type %}
+                            <span class="type-badge type-session">Session</span>
+                        {% else %}
+                            <span class="type-badge type-other">{{ log.type[:20] }}</span>
+                        {% endif %}
+                    </td>
+                    <td style="max-width:500px;word-break:break-word;">{{ log.details }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+            <div style="font-size:2rem;margin-bottom:10px;">📋</div>
+            <div style="font-size:1rem;font-weight:500;color:#2c3e50;">No violation logs found</div>
+            <p style="margin-top:6px;">Logs appear here when students use the OEMS Secure Browser.</p>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+<script>
+    document.getElementById('searchBox').addEventListener('input', filterTable);
+
+    function filterTable() {
+        const q    = document.getElementById('searchBox').value.toLowerCase();
+        const type = document.getElementById('typeFilter').value.toLowerCase();
+        const rows = document.querySelectorAll('#logBody tr');
+        let visible = 0;
+
+        rows.forEach(row => {
+            const rowType = (row.dataset.type || '').toLowerCase();
+            const rowText = (row.dataset.text || '').toLowerCase();
+            const matchQ    = !q    || rowText.includes(q) || rowType.includes(q);
+            const matchType = !type || rowType.includes(type);
+            row.style.display = (matchQ && matchType) ? '' : 'none';
+            if (matchQ && matchType) visible++;
+        });
+        document.getElementById('recordCount').textContent = visible + ' entries';
+    }
+</script>
+</body>
+</html>

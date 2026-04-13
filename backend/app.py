@@ -324,7 +324,12 @@ def run_background_evaluation(student_id, exam_id, app_context):
             conn.commit()
             cursor.execute("SELECT COALESCE(SUM(a.score),0) AS total FROM answers a WHERE a.student_id=%s AND a.exam_id=%s", (student_id, exam_id))
             total_score = float(cursor.fetchone()['total'] or 0)
-            cursor.execute("UPDATE results SET total_score=%s, submission_status='Evaluated' WHERE student_id=%s AND exam_id=%s", (round(total_score, 2), student_id, exam_id))
+            # Set Evaluated only if not Hold/Disqualified
+            cursor.execute("""
+                UPDATE results SET total_score=%s, submission_status='Evaluated'
+                WHERE student_id=%s AND exam_id=%s
+                  AND submission_status NOT IN ('Hold','Disqualified')
+            """, (round(total_score, 2), student_id, exam_id))
             conn.commit()
             cursor.execute("SELECT * FROM students WHERE id=%s", (student_id,))
             student = cursor.fetchone()
@@ -499,9 +504,9 @@ def students():
     conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     if admin_branch == "ALL":
-        cursor.execute("SELECT * FROM students ORDER BY program, semester, name, admission_no")
+        cursor.execute("SELECT * FROM students ORDER BY program, semester, admission_no, name")
     else:
-        cursor.execute("SELECT * FROM students WHERE branch=%s ORDER BY program, semester, name, admission_no", (admin_branch,))
+        cursor.execute("SELECT * FROM students WHERE branch=%s ORDER BY program, semester, admission_no, name", (admin_branch,))
     students = cursor.fetchall()
     cursor.close(); conn.close()
     return render_template("student_manager.html", students=students, admin_branch=admin_branch)
@@ -952,6 +957,10 @@ def start_exam(exam_id):
     questions = cursor.fetchall()
     cursor.close(); conn.close()
     random.shuffle(questions)
+
+    # Schedule exam end processor (idempotent — safe to call multiple times)
+    schedule_exam_end_processor(exam_id, exam_end)
+
     return render_template("start_exam.html", questions=questions, exam_id=exam_id, exam=exam,
         exam_start=exam_start.strftime("%Y-%m-%dT%H:%M:%S"), exam_end=exam_end.strftime("%Y-%m-%dT%H:%M:%S"),
         duration=exam["duration"], ai_proctoring=ai_proctoring)
@@ -1004,15 +1013,22 @@ def submit_exam(exam_id):
             cursor.execute("INSERT INTO answers (student_id,exam_id,question_id,answer,score,feedback) VALUES (%s,%s,%s,%s,%s,%s)",
                 (student_id, exam_id, q["id"], student_answer, None, "Pending AI evaluation"))
 
-    initial_status = "Pending" if has_theory else "Evaluated"
+    # ── STRICT RULE: Evaluation ONLY after exam end + plagiarism check ──
+    # No evaluation on immediate submit — exam_end_processor handles it.
+    # MCQ/MSQ: score already calculated above (objective).
+    # Theory: score = NULL until exam ends and plagiarism clears.
+    if has_theory:
+        initial_status = "AwaitingExamEnd"
+    else:
+        # MCQ-only exam: no plagiarism risk for objective, but still
+        # wait for exam end so all students are checked together.
+        initial_status = "AwaitingExamEnd"
+
     cursor.execute("INSERT INTO results (student_id,exam_id,total_score,submission_status) VALUES (%s,%s,%s,%s)",
         (student_id, exam_id, round(total_score, 2), initial_status))
     conn.commit(); cursor.close(); conn.close()
 
-    if has_theory:
-        app_ctx = app.app_context()
-        threading.Thread(target=run_background_evaluation, args=(student_id, exam_id, app_ctx), daemon=True).start()
-
+    # NO immediate evaluation thread — exam_end_processor will handle it
     return render_template('exam_submitted.html', has_theory=has_theory, objective_score=round(total_score, 2))
 
 # ── DELETE STUDENT
@@ -1055,7 +1071,12 @@ def run_ai_check():
         total = float(cursor.fetchone()["total"] or 0)
         cursor.execute("SELECT COUNT(*) AS pending FROM answers WHERE student_id=%s AND exam_id=%s AND score IS NULL", (sid,eid))
         new_status = "Pending" if cursor.fetchone()["pending"] > 0 else "Evaluated"
-        cursor.execute("UPDATE results SET total_score=%s, submission_status=%s WHERE student_id=%s AND exam_id=%s", (round(total,2), new_status, sid, eid))
+        # Don't touch Hold or Disqualified students
+        cursor.execute("""
+            UPDATE results SET total_score=%s, submission_status=%s
+            WHERE student_id=%s AND exam_id=%s
+              AND submission_status NOT IN ('Hold','Disqualified')
+        """, (round(total,2), new_status, sid, eid))
     conn.commit(); cursor.close(); conn.close()
     return f"AI Evaluation Complete — {len(records)} answers evaluated."
 
@@ -1098,6 +1119,343 @@ def plagiarism_check(exam_id):
     return render_template("plagiarism.html", similarity_results=similarity_results, cheaters=cheaters)
 
 
+# ================================================================
+# EXAM END AUTO-PROCESSOR
+# ================================================================
+# Flow (triggered when exam end time passes):
+# 1. Force-submit answers of students who didn't submit
+# 2. Run plagiarism check on all theory answers
+# 3. Similarity >= PLAGIARISM_THRESHOLD → status = "Hold"
+# 4. Normal students → AI evaluate → email PDF
+# ================================================================
+
+PLAGIARISM_THRESHOLD = 70  # % similarity → result hold
+
+_exam_end_scheduled = set()  # track which exam_ids already scheduled
+
+
+def _force_submit_missing_students(exam_id, exam, app_ctx):
+    """Students jo exam dete rahe but submit nahi kiya — unka force submit"""
+    with app_ctx:
+        try:
+            conn   = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+
+            # Students who were eligible for this exam
+            cursor.execute("""
+                SELECT s.id AS student_id FROM students s
+                WHERE s.program=%s AND s.branch=%s AND s.semester=%s
+            """, (exam['program'], exam['branch'], exam['semester']))
+            all_students = cursor.fetchall()
+
+            # Students who already submitted
+            cursor.execute("SELECT student_id FROM results WHERE exam_id=%s", (exam_id,))
+            submitted_ids = {r['student_id'] for r in cursor.fetchall()}
+
+            # Questions for this exam
+            cursor.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,))
+            questions = cursor.fetchall()
+
+            force_submitted = 0
+            for s in all_students:
+                sid = s['student_id']
+                if sid in submitted_ids:
+                    continue  # already submitted
+
+                # Check if student even started (has any answers)
+                cursor.execute(
+                    "SELECT COUNT(*) AS cnt FROM answers WHERE student_id=%s AND exam_id=%s",
+                    (sid, exam_id)
+                )
+                if cursor.fetchone()['cnt'] > 0:
+                    continue  # partial answers exist — results route will handle
+
+                # No answers at all — insert empty answers + result
+                has_theory  = False
+                total_score = 0
+                for q in questions:
+                    q_type = q['question_type'].lower()
+                    if q_type == 'theory':
+                        has_theory = True
+                        cursor.execute(
+                            "INSERT INTO answers (student_id,exam_id,question_id,answer,score,feedback) VALUES (%s,%s,%s,%s,%s,%s)",
+                            (sid, exam_id, q['id'], '', None, "Not attempted")
+                        )
+                    else:
+                        cursor.execute(
+                            "INSERT INTO answers (student_id,exam_id,question_id,answer,score,feedback) VALUES (%s,%s,%s,%s,%s,%s)",
+                            (sid, exam_id, q['id'], '', 0, "Not attempted")
+                        )
+
+                initial_status = "Pending" if has_theory else "Evaluated"
+                cursor.execute(
+                    "INSERT INTO results (student_id,exam_id,total_score,submission_status) VALUES (%s,%s,%s,%s)",
+                    (sid, exam_id, 0, initial_status)
+                )
+                force_submitted += 1
+
+            conn.commit()
+            cursor.close(); conn.close()
+            print(f"[ExamEnd] Exam {exam_id}: {force_submitted} students force-submitted")
+        except Exception as e:
+            print(f"[ExamEnd] force_submit error: {e}")
+
+
+def _run_plagiarism_and_evaluate(exam_id, app_ctx):
+    """
+    Post-exam processor — STRICT flow:
+
+    1. Collect all students with status='AwaitingExamEnd'
+    2. Theory exam → TF-IDF plagiarism check
+       - similarity >= PLAGIARISM_THRESHOLD → status='Hold' (NO eval, NO email)
+       - similarity <  PLAGIARISM_THRESHOLD → evaluate + email PDF
+    3. MCQ-only students → directly evaluate + email (no plagiarism check needed)
+
+    THIS is the ONLY place evaluation happens.
+    submit_exam just saves answers and sets AwaitingExamEnd.
+    """
+    with app_ctx:
+        try:
+            conn   = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+
+            print(f"[ExamEnd] ══ Post-exam processor started for exam {exam_id} ══")
+
+            # ── Check if exam has theory questions ──
+            cursor.execute("""
+                SELECT COUNT(*) AS theory_count
+                FROM questions
+                WHERE exam_id=%s AND question_type='theory'
+            """, (exam_id,))
+            has_theory_questions = cursor.fetchone()['theory_count'] > 0
+
+            # ── Step 1: All students awaiting processing ──
+            cursor.execute("""
+                SELECT r.student_id, r.submission_status
+                FROM results r
+                WHERE r.exam_id=%s AND r.submission_status='AwaitingExamEnd'
+            """, (exam_id,))
+            pending_students = cursor.fetchall()
+            print(f"[ExamEnd] {len(pending_students)} students to process")
+
+            if not pending_students:
+                cursor.close(); conn.close()
+                print(f"[ExamEnd] No students with AwaitingExamEnd status — skipping")
+                return
+
+            cheater_ids = set()
+
+            # ── Step 2: Plagiarism check (only if theory questions exist) ──
+            if has_theory_questions:
+                print(f"[ExamEnd] Running plagiarism check...")
+
+                cursor.execute("""
+                    SELECT s.id AS student_id, s.name, s.email,
+                           a.answer
+                    FROM answers a
+                    JOIN students  s ON a.student_id  = s.id
+                    JOIN questions q ON a.question_id = q.id
+                    WHERE q.exam_id=%s
+                      AND q.question_type='theory'
+                      AND a.answer IS NOT NULL
+                      AND a.answer != ''
+                      AND s.id IN (
+                          SELECT student_id FROM results
+                          WHERE exam_id=%s AND submission_status='AwaitingExamEnd'
+                      )
+                """, (exam_id, exam_id))
+                rows = cursor.fetchall()
+
+                # Concatenate all answers per student
+                student_texts = {}
+                student_info  = {}
+                for row in rows:
+                    sid = row['student_id']
+                    student_texts[sid] = student_texts.get(sid, "") + " " + (row['answer'] or "")
+                    student_info[sid]  = {'name': row['name'], 'email': row['email']}
+
+                # Run TF-IDF similarity
+                if len(student_texts) >= 2:
+                    sids  = list(student_texts.keys())
+                    texts = [student_texts[s] for s in sids]
+                    try:
+                        vectors    = _TfidfVec().fit_transform(texts)
+                        sim_matrix = _cosine_sim(vectors)
+                        for i in range(len(sids)):
+                            for j in range(i + 1, len(sids)):
+                                sim = round(sim_matrix[i][j] * 100, 2)
+                                print(f"[Plagiarism] {student_info.get(sids[i],{}).get('name','?')} "
+                                      f"↔ {student_info.get(sids[j],{}).get('name','?')}: {sim}%")
+                                if sim >= PLAGIARISM_THRESHOLD:
+                                    cheater_ids.add(sids[i])
+                                    cheater_ids.add(sids[j])
+                    except Exception as pe:
+                        print(f"[Plagiarism] TF-IDF error: {pe}")
+
+                # Mark plagiarists as Hold — NO evaluation, NO email
+                for sid in cheater_ids:
+                    cursor.execute(
+                        "UPDATE results SET submission_status='Hold' WHERE student_id=%s AND exam_id=%s",
+                        (sid, exam_id)
+                    )
+                    name = student_info.get(sid, {}).get('name', str(sid))
+                    print(f"[ExamEnd] {name} → Hold (similarity >= {PLAGIARISM_THRESHOLD}%)")
+
+                conn.commit()
+                print(f"[ExamEnd] {len(cheater_ids)} student(s) flagged as Hold")
+            else:
+                print(f"[ExamEnd] MCQ-only exam — skipping plagiarism check")
+
+            # ── Step 3: Evaluate clean students ──
+            # Only students still on AwaitingExamEnd (not Hold) get evaluated
+            cursor.execute("""
+                SELECT r.student_id
+                FROM results r
+                WHERE r.exam_id=%s AND r.submission_status='AwaitingExamEnd'
+            """, (exam_id,))
+            clean_students = [r['student_id'] for r in cursor.fetchall()]
+            cursor.close(); conn.close()
+
+            print(f"[ExamEnd] {len(clean_students)} student(s) cleared for evaluation")
+
+            for sid in clean_students:
+                print(f"[ExamEnd] Starting evaluation for student {sid}...")
+                _ctx = app.app_context()
+                threading.Thread(
+                    target=run_background_evaluation,
+                    args=(sid, exam_id, _ctx),
+                    daemon=True
+                ).start()
+                time.sleep(0.5)  # Small stagger — avoid DB connection burst
+
+        except Exception as e:
+            print(f"[ExamEnd] _run_plagiarism_and_evaluate error: {e}")
+            import traceback; traceback.print_exc()
+
+
+def schedule_exam_end_processor(exam_id, exam_end_dt, force=False):
+    """
+    Schedule the exam end processor to run when exam ends.
+    Uses a daemon thread with sleep — no external scheduler needed.
+    force=True: bypass idempotent check (for re-trigger after DB time change).
+    """
+    if not force and exam_id in _exam_end_scheduled:
+        return
+    _exam_end_scheduled.add(exam_id)
+
+    def _runner():
+        now   = datetime.now()
+        delay = (exam_end_dt - now).total_seconds()
+        # If exam already ended → run immediately (0s delay)
+        # If still running → wait until end + 30s grace
+        delay = max(0, delay)
+        if delay > 0:
+            delay += 30  # 30s grace for last-minute submissions
+        print(f"[ExamEnd] Exam {exam_id} processor starts in {delay:.0f}s")
+        time.sleep(delay)
+
+        print(f"[ExamEnd] Exam {exam_id}: starting post-exam processing")
+        ctx = app.app_context()
+
+        # Step A: Force-submit students who never submitted
+        with ctx:
+            conn   = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM exams WHERE id=%s", (exam_id,))
+            exam   = cursor.fetchone()
+            cursor.close(); conn.close()
+
+        if exam:
+            force_ctx = app.app_context()
+            _force_submit_missing_students(exam_id, exam, force_ctx)
+
+        time.sleep(2)
+
+        # Step B: Plagiarism + evaluate + email
+        eval_ctx = app.app_context()
+        _run_plagiarism_and_evaluate(exam_id, eval_ctx)
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+
+
+# ── Admin: Manually trigger exam end processor (re-evaluate) ──
+@app.route("/trigger_exam_evaluation/<int:exam_id>", methods=["POST"])
+@login_required("admin")
+def trigger_exam_evaluation(exam_id):
+    """
+    Admin manually triggers post-exam processing.
+    Use when:
+    - Exam time was changed in DB
+    - Students are stuck on AwaitingExamEnd
+    - Need to re-run plagiarism + evaluation
+    Resets AwaitingExamEnd students (not Hold/Disqualified/Evaluated).
+    """
+    conn   = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM exams WHERE id=%s", (exam_id,))
+    exam = cursor.fetchone()
+    if not exam:
+        cursor.close(); conn.close()
+        return jsonify({"success": False, "message": "Exam not found"}), 404
+
+    # Reset any already-evaluated results if admin wants full re-evaluation
+    # Only reset AwaitingExamEnd — don't touch Hold/Disqualified/Evaluated
+    cursor.execute("""
+        SELECT COUNT(*) AS cnt FROM results
+        WHERE exam_id=%s AND submission_status='AwaitingExamEnd'
+    """, (exam_id,))
+    awaiting_count = cursor.fetchone()['cnt']
+    cursor.close(); conn.close()
+
+    # Force-trigger processor immediately (delay=0)
+    exam_end_dt = datetime.now() - timedelta(seconds=1)  # already ended
+    _exam_end_scheduled.discard(exam_id)  # clear so force works
+    schedule_exam_end_processor(exam_id, exam_end_dt, force=True)
+
+    return jsonify({
+        "success": True,
+        "message": f"Evaluation triggered for exam '{exam['title']}'. {awaiting_count} student(s) in queue."
+    })
+
+
+# ── Admin: Release hold result manually ──
+@app.route("/release_result/<int:student_id>/<int:exam_id>", methods=["POST"])
+@login_required("admin")
+def release_result(student_id, exam_id):
+    """Admin manually releases a held result → triggers evaluation + email"""
+    conn   = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    # Release from Hold → directly evaluate (admin manually cleared)
+    # No need to re-run plagiarism — admin has already reviewed
+    cursor.execute(
+        "UPDATE results SET submission_status='AwaitingExamEnd' WHERE student_id=%s AND exam_id=%s",
+        (student_id, exam_id)
+    )
+    conn.commit()
+    cursor.close(); conn.close()
+
+    # Trigger evaluation + email in background
+    ctx = app.app_context()
+    threading.Thread(target=run_background_evaluation, args=(student_id, exam_id, ctx), daemon=True).start()
+    return jsonify({"success": True, "message": "Result released — evaluation started"})
+
+
+# ── Admin: Disqualify held result ──
+@app.route("/disqualify_result/<int:student_id>/<int:exam_id>", methods=["POST"])
+@login_required("admin")
+def disqualify_result(student_id, exam_id):
+    """Admin disqualifies a plagiarism-held result"""
+    conn   = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE results SET submission_status='Disqualified', total_score=0 WHERE student_id=%s AND exam_id=%s",
+        (student_id, exam_id)
+    )
+    conn.commit(); cursor.close(); conn.close()
+    return jsonify({"success": True, "message": "Student disqualified"})
+
+
 import cv2 as _cv2
 import numpy as _np
 import base64 as _b64
@@ -1118,80 +1476,99 @@ _clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
 def _detect_all_faces(gray):
     """
-    Production-level multi-cascade face detection.
-    Detects frontal + partial + side profile faces.
-    Uses NMS (groupRectangles) to deduplicate overlapping boxes.
-    Returns list of unique face rectangles.
+    Production-level face detection — anti-false-positive design.
+
+    ROOT CAUSE of false "multiple faces" when student turns head:
+    Running profile cascade + frontal cascade together detects the
+    SAME turned face TWICE at different positions → NMS fails to
+    merge → counted as 2 people. This was the bug.
+
+    FIX STRATEGY:
+    - Frontal cascades only for counting people (no profile cascade)
+    - Profile cascade only used AFTER frontal confirms 0 faces
+      (to distinguish "no face" from "side profile" situation)
+    - minNeighbors=5 to reduce false positives from shadows/textures
+    - IoU dedup with eps=0.5 (generous merging)
     """
-    # Contrast enhance — works better in dim/uneven lighting
-    gray_eq = _clahe.apply(gray)
+    gray_eq = _clahe.apply(gray)  # CLAHE contrast enhance
 
-    all_rects = []
-
-    # Pass 1: Default cascade — best for clear frontal faces
-    f1 = face_cascade_default.detectMultiScale(
-        gray_eq, scaleFactor=1.05, minNeighbors=3,
-        minSize=(40, 40), flags=cv2.CASCADE_SCALE_IMAGE
+    # ── PASS 1: Strict frontal detection (primary) ──
+    # minNeighbors=5 → strict, fewer false positives
+    faces_frontal = face_cascade_default.detectMultiScale(
+        gray_eq,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(60, 60),
+        flags=cv2.CASCADE_SCALE_IMAGE
     )
-    if len(f1) > 0:
-        all_rects.extend(f1.tolist())
 
-    # Pass 2: alt2 cascade — partial/turned faces, better at angles
-    f2 = face_cascade_alt2.detectMultiScale(
-        gray_eq, scaleFactor=1.05, minNeighbors=3,
-        minSize=(40, 40), flags=cv2.CASCADE_SCALE_IMAGE
+    # ── PASS 2: Alt2 cascade for partial/slightly turned faces ──
+    faces_alt2 = face_cascade_alt2.detectMultiScale(
+        gray_eq,
+        scaleFactor=1.1,
+        minNeighbors=5,
+        minSize=(60, 60),
+        flags=cv2.CASCADE_SCALE_IMAGE
     )
-    if len(f2) > 0:
-        all_rects.extend(f2.tolist())
 
-    # Pass 3: Profile cascade — side-on faces (left)
-    f3 = face_cascade_profile.detectMultiScale(
-        gray_eq, scaleFactor=1.05, minNeighbors=3,
-        minSize=(40, 40), flags=cv2.CASCADE_SCALE_IMAGE
-    )
-    if len(f3) > 0:
-        all_rects.extend(f3.tolist())
+    # Combine frontal detections
+    all_frontal = []
+    if len(faces_frontal) > 0: all_frontal.extend(faces_frontal.tolist())
+    if len(faces_alt2)    > 0: all_frontal.extend(faces_alt2.tolist())
 
-    # Pass 4: Profile cascade — side-on faces (right, flipped)
-    gray_flip = cv2.flip(gray_eq, 1)
-    f4 = face_cascade_profile.detectMultiScale(
-        gray_flip, scaleFactor=1.05, minNeighbors=3,
-        minSize=(40, 40), flags=cv2.CASCADE_SCALE_IMAGE
-    )
-    if len(f4) > 0:
-        h, w = gray.shape
-        for (x, y, fw, fh) in f4.tolist():
-            all_rects.append([w - x - fw, y, fw, fh])  # flip x back
+    # Deduplicate frontal detections (same face from 2 cascades)
+    frontal_unique = _dedup_rects(all_frontal, iou_threshold=0.3)
 
-    if not all_rects:
+    # ── PASS 3: Profile cascade — ONLY if frontal found 0 faces ──
+    # This avoids double-counting: turned head seen by both frontal
+    # (partial) AND profile cascade = false "2 faces"
+    if len(frontal_unique) == 0:
+        # Student may be in profile — check profile cascade
+        faces_profile_l = face_cascade_profile.detectMultiScale(
+            gray_eq, scaleFactor=1.1, minNeighbors=5,
+            minSize=(60, 60), flags=cv2.CASCADE_SCALE_IMAGE
+        )
+        gray_flip = cv2.flip(gray_eq, 1)
+        faces_profile_r = face_cascade_profile.detectMultiScale(
+            gray_flip, scaleFactor=1.1, minNeighbors=5,
+            minSize=(60, 60), flags=cv2.CASCADE_SCALE_IMAGE
+        )
+        profile_rects = []
+        if len(faces_profile_l) > 0:
+            profile_rects.extend(faces_profile_l.tolist())
+        if len(faces_profile_r) > 0:
+            h, w = gray.shape
+            for (x, y, fw, fh) in faces_profile_r.tolist():
+                profile_rects.append([w - x - fw, y, fw, fh])
+
+        if profile_rects:
+            return _dedup_rects(profile_rects, iou_threshold=0.3)
         return []
 
-    # NMS: groupRectangles merges overlapping/duplicate detections
-    # groupThreshold=1 means keep if detected by at least 2 rectangles
-    try:
-        deduped, _ = cv2.groupRectangles(
-            [list(r) for r in all_rects * 2],  # *2 required by API
-            groupThreshold=1,
-            eps=0.3
-        )
-        if len(deduped) > 0:
-            return deduped.tolist()
-    except Exception:
-        pass
+    return frontal_unique
 
-    # Fallback: simple overlap-based dedup if groupRectangles fails
+
+def _dedup_rects(rects, iou_threshold=0.3):
+    """
+    IoU-based deduplication of face rectangles.
+    Merges overlapping detections from different cascades.
+    """
+    if not rects:
+        return []
+
     unique = []
-    for rect in all_rects:
+    for rect in rects:
         x1, y1, w1, h1 = rect
         is_dup = False
         for ux, uy, uw, uh in unique:
-            # IoU overlap check
-            ix = max(x1, ux); iy = max(y1, uy)
+            ix = max(x1, ux);          iy = max(y1, uy)
             iw = min(x1+w1, ux+uw) - ix
             ih = min(y1+h1, uy+uh) - iy
             if iw > 0 and ih > 0:
-                overlap = (iw * ih) / min(w1*h1, uw*uh)
-                if overlap > 0.4:
+                inter   = iw * ih
+                union   = w1*h1 + uw*uh - inter
+                iou     = inter / union if union > 0 else 0
+                if iou > iou_threshold:
                     is_dup = True
                     break
         if not is_dup:
@@ -1276,7 +1653,7 @@ def detect_cheating():
             return jsonify({"cheating": False})
 
         eyes = eye_cascade.detectMultiScale(
-            face_roi, scaleFactor=1.1, minNeighbors=3, minSize=(15, 15)
+            face_roi, scaleFactor=1.1, minNeighbors=4, minSize=(18, 18)
         )
         if len(eyes) == 0:
             return jsonify({"cheating": True, "reason": "Eyes not visible"})
@@ -1288,10 +1665,13 @@ def detect_cheating():
         x_offset = (face_cx - img_cx) / img_cx
         y_offset = (face_cy - img_cy) / img_cy
 
-        if x_offset >  0.30: return jsonify({"cheating": True, "reason": "Looking Right"})
-        if x_offset < -0.30: return jsonify({"cheating": True, "reason": "Looking Left"})
-        if y_offset >  0.30: return jsonify({"cheating": True, "reason": "Looking Down"})
-        if y_offset < -0.30: return jsonify({"cheating": True, "reason": "Looking Up"})
+        # Gaze threshold 0.40 — production calibrated
+        # 0.30 was too strict → normal slight head turns = false violation
+        # 0.40 = student must look clearly off-screen to trigger
+        if x_offset >  0.40: return jsonify({"cheating": True, "reason": "Looking Right"})
+        if x_offset < -0.40: return jsonify({"cheating": True, "reason": "Looking Left"})
+        if y_offset >  0.40: return jsonify({"cheating": True, "reason": "Looking Down"})
+        if y_offset < -0.40: return jsonify({"cheating": True, "reason": "Looking Up"})
 
         return jsonify({"cheating": False})
     except Exception as e:
@@ -1707,34 +2087,53 @@ def student_result(exam_id):
         max_marks=max_marks, percentage=percentage, grade=grade, total_questions=total_q, attempted=attempted,
         not_attempted=total_q-attempted, submission_status=result['submission_status'])
 
-# ── VIOLATION LOGS (Admin)
+# ── VIOLATION LOGS — Single page (DB-based)
 @app.route("/violation_logs")
 @login_required("admin")
 def violation_logs():
-    log_path = os.path.join(os.path.expanduser("~"), "oems_violations.log")
-    logs = []
-    if os.path.exists(log_path):
-        with open(log_path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("="): continue
-                try:
-                    ts_end    = line.index("]")
-                    timestamp = line[1:ts_end].replace("T"," ")[:19]
-                    rest      = line[ts_end+2:].strip()
-                    if "|" in rest:
-                        parts   = rest.split("|")
-                        ev_type = parts[1].replace("type=","").strip() if len(parts)>1 else rest
-                        details = parts[2].replace("details=","").strip() if len(parts)>2 else ""
-                    else:
-                        ev_type = rest.split("—")[0].strip() if "—" in rest else rest[:30]
-                        details = rest
-                    logs.append({"timestamp": timestamp, "type": ev_type, "details": details})
-                except Exception:
-                    logs.append({"timestamp": "—", "type": "LOG", "details": line[:200]})
-    logs.reverse()
-    
-    return render_template("violation_logs.html", logs=logs)
+    admin_branch = session.get("admin_branch")
+    conn   = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    if admin_branch == "ALL":
+        cursor.execute("""
+            SELECT v.id, v.student_id, v.exam_id, v.violation_type,
+                   v.details, v.created_at,
+                   s.name AS student_name, s.admission_no,
+                   s.program, s.branch, s.semester,
+                   e.title AS exam_title
+            FROM exam_violations v
+            JOIN students s ON v.student_id = s.id
+            JOIN exams    e ON v.exam_id    = e.id
+            ORDER BY v.created_at DESC
+        """)
+    else:
+        cursor.execute("""
+            SELECT v.id, v.student_id, v.exam_id, v.violation_type,
+                   v.details, v.created_at,
+                   s.name AS student_name, s.admission_no,
+                   s.program, s.branch, s.semester,
+                   e.title AS exam_title
+            FROM exam_violations v
+            JOIN students s ON v.student_id = s.id
+            JOIN exams    e ON v.exam_id    = e.id
+            WHERE e.branch = %s
+            ORDER BY v.created_at DESC
+        """, (admin_branch,))
+    logs = cursor.fetchall()
+    cursor.close(); conn.close()
+
+    total_violations = len(logs)
+    terminations     = sum(1 for l in logs if l['violation_type'] == 'force_terminate')
+    unique_students  = len(set(l['student_id'] for l in logs))
+    unique_exams     = len(set(l['exam_id']    for l in logs))
+
+    return render_template("violation_logs.html",
+        logs=logs,
+        total_violations=total_violations,
+        terminations=terminations,
+        unique_students=unique_students,
+        unique_exams=unique_exams
+    )
 
 # ── LOGOUT
 @app.route("/logout")

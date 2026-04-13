@@ -703,23 +703,46 @@ class FortressExam {
         });
 
         document.addEventListener('keydown', (e) => {
+            // Block developer/cheat shortcuts
             const blocked = [
-                e.ctrlKey&&e.shiftKey&&(e.key==='I'||e.key==='J'),
-                e.ctrlKey&&e.key==='u', e.key==='F12',
-                e.ctrlKey&&e.key==='p', e.ctrlKey&&e.key==='s',
-                e.ctrlKey&&e.shiftKey&&e.key==='C',
-                (e.metaKey||e.ctrlKey)&&(e.key==='r'||e.key==='R'),
+                e.ctrlKey  && e.shiftKey && (e.key==='I'||e.key==='J'||e.key==='C'),
+                e.ctrlKey  && (e.key==='u'||e.key==='p'||e.key==='s'),
+                e.metaKey  && (e.key==='r'||e.key==='R'||e.key==='p'||e.key==='s'),
+                e.ctrlKey  && (e.key==='r'||e.key==='R'),
+                e.key === 'F12',
+                e.key === 'F5',
             ];
-            if (blocked.some(Boolean)) { e.preventDefault(); e.stopPropagation(); this._showToast('Keyboard shortcut blocked', false); }
-            if (e.key==='F5') { e.preventDefault(); this._showToast('Reload blocked during exam', false); }
+            if (blocked.some(Boolean)) {
+                e.preventDefault();
+                e.stopPropagation();
+                this._showToast('Keyboard shortcut blocked during exam', false);
+                return false;
+            }
         }, true);
 
         window.addEventListener('beforeprint', e => { e.preventDefault(); this.logViolation('Print attempt detected', 1); });
 
+        // DevTools detection — threshold 200px (not 160)
+        // 160 was triggering on external monitors / browser toolbars
+        // Also: must flag on 2 CONSECUTIVE checks (debounce) to avoid
+        // single-frame false positives during window resize
+        let _devToolsFlagCount = 0;
         const devToolsCheck = setInterval(() => {
-            if (!this.isActive||this.isSubmitted) { clearInterval(devToolsCheck); return; }
-            if (window.outerWidth-window.innerWidth>160 || window.outerHeight-window.innerHeight>160)
-                this.logViolation('Developer tools may be open', 1);
+            if (!this.isActive || this.isSubmitted) {
+                clearInterval(devToolsCheck); return;
+            }
+            const wDiff = window.outerWidth  - window.innerWidth;
+            const hDiff = window.outerHeight - window.innerHeight;
+            if (wDiff > 200 || hDiff > 200) {
+                _devToolsFlagCount++;
+                // Require 2 consecutive hits before flagging (debounce)
+                if (_devToolsFlagCount >= 2) {
+                    this.logViolation('Developer tools may be open', 1);
+                    _devToolsFlagCount = 0;
+                }
+            } else {
+                _devToolsFlagCount = 0; // reset on clean check
+            }
         }, 5000);
 
         if (document.documentElement.requestFullscreen) {
