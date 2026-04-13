@@ -58,7 +58,7 @@ def get_db_connection():
 
 # ── Ollama Config ──
 OLLAMA_URL   = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "deepseek-r1:8b")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
 print(f"[OEMS] Ollama endpoint: {OLLAMA_URL} | Model: {OLLAMA_MODEL}")
 
 # ── Campus + Browser Helpers ──
@@ -181,71 +181,56 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
 # ================================================================
 def evaluate_answer(question, student_answer, max_marks, model_answer=""):
     """
-    Strict AI evaluation using deepseek-r1:8b.
-    - model_answer se compare karta hai (admin ka reference answer)
-    - Keyword stuffing / copy-paste detect karta hai → 0 marks
-    - Agar student ka answer meaningful nahi hai → 0 marks
+    Strict answer evaluation using Ollama (qwen2.5:3b recommended).
+
+    Why NOT deepseek-r1:8b for evaluation:
+    - R1 is a reasoning model — spends 500+ tokens in <think> blocks
+    - With num_predict=120, output gets truncated BEFORE SCORE:/FEEDBACK:
+    - Result: always 0.0/marks | "Evaluated by AI." (parse failure)
+    - R1 is also 5.2GB — causes MacBook to lag heavily
+
+    qwen2.5:3b: fast, instruction-following, 1.9GB, good at structured output.
     """
+    import re as _re
+    from collections import Counter as _Counter
+
     student_answer = (student_answer or "").strip()
     model_answer   = (model_answer   or "").strip()
 
-    # Too short → immediate 0
+    # ── Pre-check 1: Too short ──
     if len(student_answer) < 10:
         return 0, "Answer too short or not provided."
 
-    # ── Pre-check: Keyword stuffing detection ──
-    # Agar student ne same word 3+ baar likha aur total words < 15
+    # ── Pre-check 2: Keyword stuffing ──
     words = student_answer.lower().split()
-    if len(words) > 0:
-        from collections import Counter
-        word_counts = Counter(words)
-        most_common_word, most_common_count = word_counts.most_common(1)[0]
-        # Agar koi ek word overall words ka 40%+ hai → stuffing
-        stuffing_ratio = most_common_count / len(words)
-        if stuffing_ratio >= 0.40 and len(words) < 30:
-            return 0, f"Keyword stuffing detected — '{most_common_word}' repeated excessively."
+    if len(words) >= 3:
+        wc = _Counter(words)
+        top_word, top_count = wc.most_common(1)[0]
+        # Stop words ko ignore karo
+        stop = {"the","a","an","is","are","was","were","of","in","on","at","to","and","or","it"}
+        if top_word not in stop:
+            ratio = top_count / len(words)
+            if ratio >= 0.45 and len(words) < 40:
+                return 0, f"Keyword stuffing detected — '{top_word}' repeated {top_count} times."
 
-    # ── Build reference section for prompt ──
-    if model_answer:
-        reference_section = (
-            "REFERENCE ANSWER (Admin's Model Answer):\n"
-            + model_answer
-            + "\n\n"
-        )
-    else:
-        reference_section = ""
+    # ── Build prompt — simple, strict, short ──
+    ref_block = f"REFERENCE ANSWER:\n{model_answer}\n\n" if model_answer else ""
 
-    # Build prompt without triple quotes inside f-string
-    student_ans_block = '"' + student_answer + '"'
-    prompt = f"""You are a strict academic examiner for a university exam. Your job is to evaluate a student's answer against the reference answer provided by the teacher.
-
-QUESTION:
-{question}
-
-{reference_section}STUDENT'S ANSWER:
-{student_ans_block}
-
-MAXIMUM MARKS: {max_marks}
-
-STRICT EVALUATION RULES — follow ALL of these:
-1. Compare student's answer DIRECTLY with the reference answer (if provided).
-2. Award marks ONLY for content that is conceptually correct AND relevant to the question.
-3. Give ZERO marks if:
-   - Student has only written keywords/terms without explanation (e.g. just "Operating System" repeated).
-   - Student's answer has no meaningful connection to the reference answer or question.
-   - Answer is gibberish, random text, or copy-pasted irrelevant content.
-   - Answer mentions correct keywords but shows NO understanding of the concept.
-4. Award PARTIAL marks if:
-   - Some points are correct but incomplete compared to reference answer.
-   - Answer shows partial understanding but misses key concepts.
-5. Award FULL marks ONLY if:
-   - Answer covers all key points from the reference answer.
-   - Explanation is clear and conceptually accurate.
-6. Marks must be between 0 and {max_marks} in 0.5 increments.
-
-Respond in EXACTLY this format — no extra text, no explanation outside format:
-SCORE: <number>
-FEEDBACK: <one concise line, max 20 words, explaining why this score was given>"""
+    prompt = (
+        f"You are a strict university exam evaluator.\n\n"
+        f"QUESTION: {question}\n\n"
+        f"{ref_block}"
+        f"STUDENT ANSWER: {student_answer}\n\n"
+        f"MAX MARKS: {max_marks}\n\n"
+        f"Rules:\n"
+        f"- Give 0 if answer is irrelevant, only keywords, or gibberish.\n"
+        f"- Give partial marks for partial understanding.\n"
+        f"- Give full marks only if answer is complete and correct.\n"
+        f"- Compare strictly against reference answer if provided.\n\n"
+        f"Reply in EXACTLY this format (2 lines only):\n"
+        f"SCORE: <number between 0 and {max_marks} in 0.5 steps>\n"
+        f"FEEDBACK: <reason in max 15 words>"
+    )
 
     try:
         resp = requests.post(
@@ -255,44 +240,60 @@ FEEDBACK: <one concise line, max 20 words, explaining why this score was given>"
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.1,   # low temp = consistent, deterministic grading
-                    "num_predict": 120,   # enough for score + feedback
-                    "top_p": 0.9,
-                    "repeat_penalty": 1.1
+                    "temperature": 0.0,   # deterministic
+                    "num_predict": 60,    # SCORE + FEEDBACK = ~20 tokens, 60 is plenty
+                    "top_p": 1.0,
+                    "stop": ["\n\n", "---"]  # stop after 2 lines
                 }
             },
-            timeout=90  # deepseek-r1 needs more time (reasoning model)
+            timeout=60
         )
         resp.raise_for_status()
         raw = resp.json().get("response", "").strip()
 
-        # deepseek-r1 wraps thinking in <think>...</think> — strip it
-        import re as _re
+        # Strip <think> blocks (deepseek-r1 compat, no-op for others)
         raw = _re.sub(r"<think>.*?</think>", "", raw, flags=_re.DOTALL).strip()
 
-        score    = 0.0
-        feedback = "Evaluated by AI."
+        print(f"[AI Eval] raw: {repr(raw[:120])}")
+
+        score    = None
+        feedback = ""
 
         for line in raw.splitlines():
             line = line.strip()
             if not line:
                 continue
-            if line.upper().startswith("SCORE:"):
+            upper = line.upper()
+            if upper.startswith("SCORE:"):
                 try:
-                    val   = float(line.split(":", 1)[1].strip().split()[0])
+                    val   = float(_re.findall(r"[-+]?\d*\.?\d+", line.split(":",1)[1])[0])
                     score = max(0.0, min(float(max_marks), round(val * 2) / 2))
                 except Exception:
                     score = 0.0
-            elif line.upper().startswith("FEEDBACK:"):
-                feedback = line.split(":", 1)[1].strip()[:200]
+            elif upper.startswith("FEEDBACK:"):
+                feedback = line.split(":",1)[1].strip()[:200]
+
+        # If parse completely failed — try regex on full raw
+        if score is None:
+            nums = _re.findall(r"\b(\d+(?:\.\d+)?)\b", raw)
+            if nums:
+                val   = float(nums[0])
+                score = max(0.0, min(float(max_marks), round(val * 2) / 2))
+            else:
+                score = 0.0
+            if not feedback:
+                feedback = "Auto-evaluated."
+
+        if not feedback:
+            feedback = "Evaluated."
 
         print(f"[AI Eval] → {score}/{max_marks} | {feedback}")
         return score, feedback
 
     except requests.exceptions.ConnectionError:
-        return 0, "Evaluation failed — Ollama server not reachable."
+        return 0, "Ollama server not reachable — start with: ollama serve"
     except requests.exceptions.Timeout:
-        return 0, "Evaluation timed out — please retry via Admin panel."
+        return 0, "Evaluation timed out — retry via Admin panel."
     except Exception as e:
         print(f"[AI Eval] Error: {e}")
         return 0, f"Evaluation error: {str(e)[:60]}"
@@ -504,9 +505,9 @@ def students():
     conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     if admin_branch == "ALL":
-        cursor.execute("SELECT * FROM students ORDER BY program, semester, admission_no, name")
+        cursor.execute("SELECT * FROM students ORDER BY program, semester, name, admission_no")
     else:
-        cursor.execute("SELECT * FROM students WHERE branch=%s ORDER BY program, semester, admission_no, name", (admin_branch,))
+        cursor.execute("SELECT * FROM students WHERE branch=%s ORDER BY program, semester, name, admission_no", (admin_branch,))
     students = cursor.fetchall()
     cursor.close(); conn.close()
     return render_template("student_manager.html", students=students, admin_branch=admin_branch)
@@ -1162,35 +1163,24 @@ def _force_submit_missing_students(exam_id, exam, app_ctx):
                 if sid in submitted_ids:
                     continue  # already submitted
 
-                # Check if student even started (has any answers)
+                # Check if student started the exam (has any answers)
                 cursor.execute(
                     "SELECT COUNT(*) AS cnt FROM answers WHERE student_id=%s AND exam_id=%s",
                     (sid, exam_id)
                 )
-                if cursor.fetchone()['cnt'] > 0:
-                    continue  # partial answers exist — results route will handle
+                ans_count = cursor.fetchone()['cnt']
 
-                # No answers at all — insert empty answers + result
-                has_theory  = False
-                total_score = 0
-                for q in questions:
-                    q_type = q['question_type'].lower()
-                    if q_type == 'theory':
-                        has_theory = True
-                        cursor.execute(
-                            "INSERT INTO answers (student_id,exam_id,question_id,answer,score,feedback) VALUES (%s,%s,%s,%s,%s,%s)",
-                            (sid, exam_id, q['id'], '', None, "Not attempted")
-                        )
-                    else:
-                        cursor.execute(
-                            "INSERT INTO answers (student_id,exam_id,question_id,answer,score,feedback) VALUES (%s,%s,%s,%s,%s,%s)",
-                            (sid, exam_id, q['id'], '', 0, "Not attempted")
-                        )
+                # ── RULE: Jo student ne exam attempt hi nahi kiya → IGNORE ──
+                # Unhe force-submit nahi karna — no answers = absent student
+                if ans_count == 0:
+                    continue
 
-                initial_status = "Pending" if has_theory else "Evaluated"
+                # Student ne exam shuru kiya tha but submit nahi kiya
+                # (answers hain, result row nahi) → force-submit their existing answers
+                has_theory = any(q['question_type'].lower() == 'theory' for q in questions)
                 cursor.execute(
                     "INSERT INTO results (student_id,exam_id,total_score,submission_status) VALUES (%s,%s,%s,%s)",
-                    (sid, exam_id, 0, initial_status)
+                    (sid, exam_id, 0, "AwaitingExamEnd")
                 )
                 force_submitted += 1
 
