@@ -75,7 +75,9 @@
         .btn-release:hover { background: #2e7d32; color: white; }
         .btn-disq { background: #ffebee; color: #c62828; border: none; padding: 5px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: 0.2s; font-family: 'Poppins', sans-serif; white-space: nowrap; }
         .btn-disq:hover { background: #c62828; color: white; }
-        .btn-release:disabled, .btn-disq:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-reeval { background:#eef2ff; color:#3730a3; border:none; padding:5px 12px; border-radius:20px; font-size:0.78rem; font-weight:600; cursor:pointer; transition:0.2s; font-family:'Poppins',sans-serif; margin-left:4px; white-space:nowrap; }
+        .btn-reeval:hover { background:#3730a3; color:white; }
+        .btn-release:disabled, .btn-disq:disabled, .btn-reeval:disabled { opacity: 0.5; cursor: not-allowed; }
 
         .empty-state { text-align: center; padding: 3rem; color: #6c757d; }
 
@@ -173,9 +175,9 @@
             <div class="table-title">Student Results</div>
             <div style="display:flex;align-items:center;gap:12px;">
                 <div class="record-count" id="recordCount">{{ results|length if results else 0 }} records</div>
-                <!-- Trigger Evaluation — for AwaitingExamEnd students -->
+                <!-- Trigger Evaluation — for queued students -->
                 {% set awaiting_exams = [] %}
-                {% for r in results %}{% if r.submission_status=='AwaitingExamEnd' and r.exam_id not in awaiting_exams %}{% set _ = awaiting_exams.append(r.exam_id) %}{% endif %}{% endfor %}
+                {% for r in results %}{% if r.submission_status in ['AwaitingExamEnd','Pending'] and r.exam_id not in awaiting_exams %}{% set _ = awaiting_exams.append(r.exam_id) %}{% endif %}{% endfor %}
                 {% for eid in awaiting_exams %}
                 <button class="btn-trigger" id="trigger-{{ eid }}"
                         onclick="triggerEvaluation({{ eid }})"
@@ -214,6 +216,8 @@
                         <td>
                             {% if r.submission_status in ['Hold', 'Disqualified'] %}
                                 <span class="score-badge score-pending">—</span>
+                            {% elif r.submission_status in ['Pending', 'AwaitingExamEnd'] %}
+                                <span class="score-badge score-pending">Pending</span>
                             {% elif r.total_score is not none %}
                                 {% set score = r.total_score|float %}
                                 {% if score >= 60 %}
@@ -265,6 +269,14 @@
                                 <span style="font-size:0.78rem;color:#adb5bd;">Disqualified</span>
                             {% else %}
                                 <a href="/result_details/{{ r.student_id }}/{{ r.exam_id }}" class="btn-view">View Details</a>
+                                {% if r.submission_status in ['Evaluated', 'Pending'] %}
+                                <button class="btn-reeval"
+                                        id="reeval-{{ r.student_id }}-{{ r.exam_id }}"
+                                        onclick="reevaluateResult({{ r.student_id }}, {{ r.exam_id }}, '{{ r.student_name | replace("'", "\\'") }}')"
+                                        title="Reset this student's theory scores and run SBERT again">
+                                    Re-evaluate
+                                </button>
+                                {% endif %}
                             {% endif %}
                         </td>
                     </tr>
@@ -314,10 +326,37 @@
             if (relBtn)  { relBtn.disabled  = false; relBtn.textContent  = '✓ Release'; }
             if (disqBtn) { disqBtn.disabled = false; }
         }
-    }
+      }
 
-    // ── Disqualify Result ──
-    async function disqualifyResult(studentId, examId, name) {
+      // ── Re-evaluate Clean Result ──
+      async function reevaluateResult(studentId, examId, name) {
+          if (!confirm(`Re-evaluate result for: ${name}?\n\nThis will reset theory scores and run SBERT evaluation again.`)) return;
+          const btn = document.getElementById(`reeval-${studentId}-${examId}`);
+          if (btn) { btn.disabled = true; btn.textContent = 'Processing...'; }
+          try {
+              const resp = await fetch(`/reevaluate_result/${studentId}/${examId}`, { method: 'POST' });
+              const data = await resp.json();
+              if (data.success) {
+                  showToast(`✓ ${name} — ${data.message}`, 'success');
+                  const row = document.getElementById(`row-${studentId}-${examId}`);
+                  if (row) {
+                      row.children[5].innerHTML = '<span class="score-badge score-pending">Pending</span>';
+                      row.children[6].innerHTML = '<span class="status-badge status-pend">⏳ Pending</span>';
+                      row.children[7].innerHTML = '<span style="font-size:0.78rem;color:#6c757d;">Processing...</span>';
+                  }
+                  setTimeout(() => location.reload(), 5000);
+              } else {
+                  showToast(`✗ Failed: ${data.message}`, 'error');
+                  if (btn) { btn.disabled = false; btn.textContent = 'Re-evaluate'; }
+              }
+          } catch(e) {
+              showToast('Network error. Please retry.', 'error');
+              if (btn) { btn.disabled = false; btn.textContent = 'Re-evaluate'; }
+          }
+      }
+
+      // ── Disqualify Result ──
+      async function disqualifyResult(studentId, examId, name) {
         if (!confirm(`Disqualify: ${name}?\n\nScore will be set to 0. This cannot be undone easily.`)) return;
         const relBtn  = document.getElementById(`rel-${studentId}-${examId}`);
         const disqBtn = document.getElementById(`disq-${studentId}-${examId}`);
@@ -388,7 +427,7 @@
     // ── Trigger Evaluation ──
     async function triggerEvaluation(examId) {
         const btn = document.getElementById('trigger-' + examId);
-        if (!confirm('Force-start evaluation for Exam #' + examId + '?\n\nThis will run plagiarism check and evaluate all awaiting students.')) return;
+        if (!confirm('Force-start evaluation for Exam #' + examId + '?\n\nThis will run plagiarism check and evaluate all queued students.')) return;
         if (btn) { btn.disabled = true; btn.textContent = '⏳ Starting...'; }
         try {
             const resp = await fetch('/trigger_exam_evaluation/' + examId, { method: 'POST' });

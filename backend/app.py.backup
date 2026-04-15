@@ -14,12 +14,13 @@ import threading
 import re
 import os
 import logging
+from collections import Counter
+from html import escape
 from werkzeug.exceptions import TooManyRequests
 import cv2
 import numpy as np
 import base64
 from ultralytics import YOLO
-import requests
 from dotenv import load_dotenv
 import io
 import time
@@ -56,10 +57,9 @@ db_pool = mysql.connector.pooling.MySQLConnectionPool(
 def get_db_connection():
     return db_pool.get_connection()
 
-# ── Ollama Config ──
-OLLAMA_URL   = os.environ.get("OLLAMA_URL")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL")
-print(f"[OEMS] Ollama endpoint: {OLLAMA_URL} | Model: {OLLAMA_MODEL}")
+# ── SBERT Config ──
+SBERT_MODEL_NAME = os.environ.get("SBERT_MODEL", "all-MiniLM-L6-v2")
+print(f"[OEMS] SBERT model: {SBERT_MODEL_NAME}")
 
 # ── Campus + Browser Helpers ──
 _raw_ip = os.environ.get("CAMPUS_IP_RANGES", "10.104.242")
@@ -177,198 +177,160 @@ def generate_result_pdf(student, exam, answers, total_score, percentage):
 
 
 # ================================================================
-# AI EVALUATION ENGINE — Ollama
+# AI EVALUATION ENGINE — SBERT only
 # ================================================================
-# ── SBERT model (lazy loaded — only when first called) ──
+class EvaluationUnavailable(RuntimeError):
+    """Raised when SBERT could not run, so marks must stay pending."""
+
+
 _sbert_model = None
-_sbert_available = False
+
+_EVAL_STOP_WORDS = {
+    "the","a","an","is","are","am","was","were","of","in","on","at","to","and","or",
+    "it","this","that","these","those","with","for","by","be","been","being","has",
+    "have","had","can","will","would","could","should","as","from","into","than",
+    "then","there","their","its","if","but","so","such","also","very"
+}
+
+_EXPLANATION_WORDS = {
+    "is","are","was","were","has","have","can",
+    "because","therefore","hence","thus","means","mean","refers","called","defined",
+    "used","uses","use","works","helps","allows","requires","provides","contains",
+    "includes","consists","converts","performs","process","stores","checks","finds",
+    "found","divides","halves","compares","manages","controls","allocates",
+    "schedules","executes","prevents","detects","recovers","protects","explains",
+    "describes","represents","depends","handles","maps","translates",
+    "when","where","which","why","how","example"
+}
+
 
 def _get_sbert():
-    global _sbert_model, _sbert_available
+    global _sbert_model
     if _sbert_model is not None:
         return _sbert_model
     try:
         from sentence_transformers import SentenceTransformer
-        import torch
-        _sbert_model = SentenceTransformer('all-MiniLM-L6-v2')
-        _sbert_available = True
-        print("[OEMS] SBERT model loaded (all-MiniLM-L6-v2)")
+        _sbert_model = SentenceTransformer(SBERT_MODEL_NAME)
+        print(f"[OEMS] SBERT model loaded ({SBERT_MODEL_NAME})")
         return _sbert_model
-    except ImportError:
-        _sbert_available = False
-        print("[OEMS] sentence-transformers not installed — using Ollama fallback")
-        print("[OEMS] Run: pip install sentence-transformers")
-        return None
+    except ImportError as e:
+        raise EvaluationUnavailable(
+            "sentence-transformers is not installed. Install it before running AI evaluation."
+        ) from e
     except Exception as e:
-        _sbert_available = False
-        print(f"[OEMS] SBERT load error: {e} — using Ollama fallback")
-        return None
+        raise EvaluationUnavailable(f"SBERT model load failed: {str(e)[:100]}") from e
 
 
-def _sbert_evaluate(question, student_answer, model_answer, max_marks):
+def _tokenize_answer(text):
+    return re.findall(r"[a-zA-Z0-9]+(?:'[a-z]+)?", (text or "").lower())
+
+
+def _answer_quality_guard(student_answer):
     """
-    SBERT semantic similarity evaluation.
-    Understands meaning — paraphrase of correct answer gets correct score.
+    Blocks keyword-only / stuffed answers before semantic scoring.
+    Returns (score, feedback) for hard fails, or None when SBERT can evaluate.
     """
-    from sklearn.metrics.pairwise import cosine_similarity as _cos_sim
-    import re as _re
-    from collections import Counter as _Counter
-    import numpy as _np
-
-    model = _get_sbert()
-    if model is None:
-        return None, None  # fallback to Ollama
-
-    s = (student_answer or "").strip()
-    m = (model_answer   or "").strip()
-    q = (question       or "").strip()
-
-    # ── Guard checks ──
-    if len(s) < 10:
+    answer = (student_answer or "").strip()
+    tokens = _tokenize_answer(answer)
+    if len(answer) < 10 or len(tokens) < 5:
         return 0.0, "Answer too short or not provided."
 
-    words = s.lower().split()
-    if len(words) < 5:
-        return 0.0, "Answer too brief — minimum 5 words required."
+    meaningful = [w for w in tokens if w not in _EVAL_STOP_WORDS and len(w) > 2]
+    if len(meaningful) < 4:
+        return 0.0, "Answer contains too few meaningful explanatory words."
 
-    stop = {"the","a","an","is","are","was","were","of","in","on","to","and","or",
-            "it","this","that","with","for","by","be","has","have","had","can","will"}
-    meaningful = [w for w in words if w not in stop and len(w) > 2]
-    wc = _Counter(meaningful)
-    if wc and len(meaningful) >= 3:
-        top_w, top_c = wc.most_common(1)[0]
-        if top_c / len(meaningful) > 0.40 and len(meaningful) < 35:
-            return 0.0, f"Keyword stuffing: '{top_w}' repeated without explanation."
+    wc = Counter(meaningful)
+    top_word, top_count = wc.most_common(1)[0]
+    repeated_ratio = top_count / max(len(meaningful), 1)
+    if top_count >= 3 and repeated_ratio >= 0.35 and len(meaningful) < 45:
+        return 0.0, f"Keyword stuffing: '{top_word}' repeated without explanation."
 
-    # ── SBERT encoding ──
-    reference = m if m else q
-    try:
-        embeddings = model.encode([reference, s], convert_to_numpy=True)
-        sim = float(_cos_sim([embeddings[0]], [embeddings[1]])[0][0])
-        sim = max(0.0, min(1.0, sim))  # clamp to [0,1]
-    except Exception as e:
-        print(f"[SBERT] encode error: {e}")
-        return None, None  # fallback
+    unique_ratio = len(set(meaningful)) / max(len(meaningful), 1)
+    if len(meaningful) >= 8 and unique_ratio < 0.45:
+        return 0.0, "Repeated keywords without enough explanation."
 
-    # ── Length factor (student must write enough) ──
-    ref_words = len([w for w in reference.split() if w not in stop])
-    s_words   = len(meaningful)
-    l_ratio   = s_words / max(ref_words * 0.30, 1)
-    l_factor  = min(l_ratio, 1.0)
+    chunks = [c.strip() for c in re.split(r"[,;\n|/]+", answer) if c.strip()]
+    if len(chunks) >= 4:
+        short_keyword_chunks = 0
+        for chunk in chunks:
+            chunk_tokens = _tokenize_answer(chunk)
+            chunk_explains = any(w in _EXPLANATION_WORDS for w in chunk_tokens)
+            if len(chunk_tokens) <= 4 and not chunk_explains:
+                short_keyword_chunks += 1
 
-    final_sim = sim * l_factor
-    raw       = final_sim * max_marks
-    score     = max(0.0, min(float(max_marks), round(raw * 2) / 2))
+        keyword_chunk_ratio = short_keyword_chunks / max(len(chunks), 1)
+        if keyword_chunk_ratio >= 0.65:
+            return 0.0, "Keyword list detected without meaningful explanation."
 
-    pct = round(sim * 100)
-    if   pct >= 80: fb = f"Excellent — answer closely matches model answer ({pct}% semantic match)."
-    elif pct >= 65: fb = f"Good answer — {pct}% semantic match, minor gaps."
-    elif pct >= 45: fb = f"Partial credit — {pct}% match, key concepts missing."
-    elif pct >= 25: fb = f"Weak answer — {pct}% semantic match, lacks explanation."
-    else:           fb = f"Answer not relevant to the question ({pct}% semantic match)."
+    separators = len(re.findall(r"[,;\n|/]+|(?:^|\s)[\-*](?=\s)", answer))
+    explanation_hits = sum(1 for w in tokens if w in _EXPLANATION_WORDS)
+    has_sentence_end = bool(re.search(r"[.!?]", answer))
+    meaningful_ratio = len(meaningful) / max(len(tokens), 1)
+    list_like = separators >= 2 and explanation_hits <= 1 and meaningful_ratio >= 0.60
+    no_explanation = (
+        len(tokens) <= 18
+        and explanation_hits == 0
+        and not has_sentence_end
+        and meaningful_ratio >= 0.70
+    )
 
-    return score, fb
+    if list_like or no_explanation:
+        return 0.0, "Keyword-only answer without explanation."
+
+    return None
 
 
 def evaluate_answer(question, student_answer, max_marks, model_answer=""):
     """
-    Production evaluation engine.
-
-    Priority:
-    1. SBERT (sentence-transformers) — semantic similarity, best accuracy
-       Install: pip install sentence-transformers
-    2. Ollama (qwen2.5:3b) — LLM fallback if SBERT not available
-
-    SBERT advantages:
-    - Understands meaning (paraphrase = correct)
-    - No Ollama/GPU needed after model download (~80MB)
-    - Fast: ~50-100ms per answer on CPU
-    - No MacBook lag
-    - Deterministic results
+    SBERT-only semantic evaluation.
+    Keyword-only/stuffed answers are failed before semantic similarity scoring.
     """
-    import re as _re
-    from collections import Counter as _Counter
-
     student_answer = (student_answer or "").strip()
     model_answer   = (model_answer   or "").strip()
 
-    # ── Pre-check: too short ──
-    if len(student_answer) < 10:
-        return 0, "Answer too short or not provided."
-
-    # ── Try SBERT first ──
-    score, feedback = _sbert_evaluate(question, student_answer, model_answer, max_marks)
-    if score is not None:
-        print(f"[SBERT Eval] → {score}/{max_marks} | {feedback}")
+    guard_result = _answer_quality_guard(student_answer)
+    if guard_result is not None:
+        score, feedback = guard_result
+        print(f"[SBERT Guard] -> {score}/{max_marks} | {feedback}")
         return score, feedback
 
-    # ── Ollama fallback (qwen2.5:3b) ──
-    print(f"[AI Eval] SBERT unavailable — using Ollama fallback")
+    model = _get_sbert()
+    reference = model_answer or (question or "").strip()
+    if not reference:
+        raise EvaluationUnavailable("No reference answer or question text available for SBERT evaluation.")
 
-    words = student_answer.lower().split()
-    wc = _Counter(words)
-    stop_set = {"the","a","an","is","are","was","of","in","on","to","and","or","it"}
-    meaningful = {w:c for w,c in wc.items() if w not in stop_set and len(w) > 2}
-    if meaningful:
-        top_w, top_c = max(meaningful.items(), key=lambda x: x[1])
-        if top_c / len(words) > 0.45 and len(words) < 40:
-            return 0, f"Keyword stuffing: '{top_w}' repeated {top_c}x."
-
-    ref_block = f"REFERENCE ANSWER:\n{model_answer}\n\n" if model_answer else ""
-    prompt = (
-        f"You are a strict university exam evaluator.\n\n"
-        f"QUESTION: {question}\n\n"
-        f"{ref_block}"
-        f"STUDENT ANSWER: {student_answer}\n\n"
-        f"MAX MARKS: {max_marks}\n\n"
-        f"Rules:\n"
-        f"- Give 0 if answer is only keywords, irrelevant, or gibberish.\n"
-        f"- Give partial marks for partial correct understanding.\n"
-        f"- Give full marks if answer covers all points from reference.\n"
-        f"- Strictly compare against reference answer.\n\n"
-        f"Reply ONLY in this exact format:\n"
-        f"SCORE: <number 0 to {max_marks} in 0.5 steps>\n"
-        f"FEEDBACK: <reason in max 15 words>"
-    )
     try:
-        resp = requests.post(
-            OLLAMA_URL,
-            json={
-                "model":   OLLAMA_MODEL,
-                "prompt":  prompt,
-                "stream":  False,
-                "options": {"temperature": 0.0, "num_predict": 50, "stop": ["\n\n"]}
-            },
-            timeout=60
-        )
-        resp.raise_for_status()
-        raw = resp.json().get("response", "").strip()
-        raw = _re.sub(r"<think>.*?</think>", "", raw, flags=_re.DOTALL).strip()
-        print(f"[AI Eval] raw: {repr(raw[:100])}")
-
-        score = 0.0; feedback = ""
-        for line in raw.splitlines():
-            line = line.strip()
-            if line.upper().startswith("SCORE:"):
-                try:
-                    nums = _re.findall(r"\d+(?:\.\d+)?", line.split(":",1)[1])
-                    if nums:
-                        val = float(nums[0])
-                        score = max(0.0, min(float(max_marks), round(val*2)/2))
-                except: pass
-            elif line.upper().startswith("FEEDBACK:"):
-                feedback = line.split(":",1)[1].strip()[:200]
-
-        if not feedback: feedback = "Evaluated."
-        print(f"[AI Eval] → {score}/{max_marks} | {feedback}")
-        return score, feedback
-
-    except requests.exceptions.ConnectionError:
-        return 0, "Ollama not reachable — install sentence-transformers for offline eval."
-    except requests.exceptions.Timeout:
-        return 0, "Evaluation timed out."
+        from sklearn.metrics.pairwise import cosine_similarity as _cos_sim
+        embeddings = model.encode([reference, student_answer], convert_to_numpy=True)
+        sim = float(_cos_sim([embeddings[0]], [embeddings[1]])[0][0])
+        sim = max(0.0, min(1.0, sim))
     except Exception as e:
-        return 0, f"Error: {str(e)[:60]}"
+        raise EvaluationUnavailable(f"SBERT evaluation failed: {str(e)[:100]}") from e
+
+    ref_tokens = [w for w in _tokenize_answer(reference) if w not in _EVAL_STOP_WORDS and len(w) > 2]
+    ans_tokens = [w for w in _tokenize_answer(student_answer) if w not in _EVAL_STOP_WORDS and len(w) > 2]
+    length_factor = min(len(ans_tokens) / max(len(ref_tokens) * 0.35, 6), 1.0)
+    final_sim = sim * length_factor
+
+    if sim < 0.30 or final_sim < 0.25:
+        score = 0.0
+    else:
+        score = max(0.0, min(float(max_marks), round(final_sim * max_marks * 2) / 2))
+
+    pct = round(sim * 100)
+    if score == 0:
+        feedback = f"Answer lacks correct explanation ({pct}% semantic match)."
+    elif pct >= 80:
+        feedback = f"Excellent answer with strong semantic match ({pct}%)."
+    elif pct >= 65:
+        feedback = f"Good answer with minor missing points ({pct}% match)."
+    elif pct >= 45:
+        feedback = f"Partial answer; key explanation is incomplete ({pct}% match)."
+    else:
+        feedback = f"Weak answer; limited semantic match ({pct}%)."
+
+    print(f"[SBERT Eval] -> {score}/{max_marks} | sim={pct}% | length_factor={round(length_factor, 2)}")
+    return score, feedback
 
 
 # ── Background Evaluation Thread ──
@@ -384,6 +346,7 @@ def run_background_evaluation(student_id, exam_id, app_context):
                 WHERE a.student_id=%s AND a.exam_id=%s AND q.question_type='theory' AND a.score IS NULL
             """, (student_id, exam_id))
             theory_answers = cursor.fetchall()
+            evaluation_error = None
             for ans in theory_answers:
                 student_answer = (ans['answer'] or '').strip()
                 model_answer   = (ans['model_answer'] or '').strip()
@@ -391,11 +354,57 @@ def run_background_evaluation(student_id, exam_id, app_context):
                     score, feedback = 0, "No answer submitted or too short."
                 else:
                     # Pass model_answer to strict evaluator
-                    score, feedback = evaluate_answer(
-                        ans['question_text'], student_answer, ans['marks'], model_answer
-                    )
+                    try:
+                        score, feedback = evaluate_answer(
+                            ans['question_text'], student_answer, ans['marks'], model_answer
+                        )
+                    except EvaluationUnavailable as e:
+                        evaluation_error = str(e)
+                        print(f"[BG Eval] Student {student_id}, exam {exam_id}: {evaluation_error}")
+                        break
                 cursor.execute("UPDATE answers SET score=%s, feedback=%s WHERE id=%s", (round(score, 1), feedback, ans['id']))
+
+            if evaluation_error:
+                cursor.execute("""
+                    UPDATE answers a
+                    JOIN questions q ON a.question_id=q.id
+                    SET a.feedback=%s
+                    WHERE a.student_id=%s AND a.exam_id=%s
+                      AND q.question_type='theory'
+                      AND a.score IS NULL
+                """, ("Evaluation pending. Please retry after evaluator is available.", student_id, exam_id))
+                cursor.execute("""
+                    UPDATE results SET submission_status='Pending'
+                    WHERE student_id=%s AND exam_id=%s
+                      AND submission_status NOT IN ('Hold','Disqualified')
+                """, (student_id, exam_id))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                return
+
             conn.commit()
+            cursor.execute("""
+                SELECT COUNT(*) AS pending
+                FROM answers a
+                JOIN questions q ON a.question_id=q.id
+                WHERE a.student_id=%s AND a.exam_id=%s
+                  AND q.question_type='theory'
+                  AND a.score IS NULL
+            """, (student_id, exam_id))
+            pending_theory = cursor.fetchone()['pending']
+            if pending_theory > 0:
+                cursor.execute("""
+                    UPDATE results SET submission_status='Pending'
+                    WHERE student_id=%s AND exam_id=%s
+                      AND submission_status NOT IN ('Hold','Disqualified')
+                """, (student_id, exam_id))
+                conn.commit()
+                cursor.close()
+                conn.close()
+                print(f"[BG Eval] Student {student_id}, exam {exam_id}: {pending_theory} answer(s) still pending; no email sent")
+                return
+
             cursor.execute("SELECT COALESCE(SUM(a.score),0) AS total FROM answers a WHERE a.student_id=%s AND a.exam_id=%s", (student_id, exam_id))
             total_score = float(cursor.fetchone()['total'] or 0)
             # Set Evaluated only if not Hold/Disqualified
@@ -404,7 +413,14 @@ def run_background_evaluation(student_id, exam_id, app_context):
                 WHERE student_id=%s AND exam_id=%s
                   AND submission_status NOT IN ('Hold','Disqualified')
             """, (round(total_score, 2), student_id, exam_id))
+            updated_results = cursor.rowcount
             conn.commit()
+            if updated_results == 0:
+                cursor.close()
+                conn.close()
+                print(f"[BG Eval] Student {student_id}, exam {exam_id}: result not marked Evaluated; no email sent")
+                return
+
             cursor.execute("SELECT * FROM students WHERE id=%s", (student_id,))
             student = cursor.fetchone()
             cursor.execute("SELECT * FROM exams WHERE id=%s", (exam_id,))
@@ -421,9 +437,15 @@ def run_background_evaluation(student_id, exam_id, app_context):
             max_marks  = sum(a['marks'] for a in all_answers)
             percentage = (total_score / max_marks * 100) if max_marks > 0 else 0
             pdf_bytes  = generate_result_pdf(student, exam, all_answers, total_score, percentage)
+            zero_reasons = []
+            if total_score <= 0:
+                for idx, ans in enumerate(all_answers, 1):
+                    if float(ans.get('score') or 0) == 0:
+                        reason = ans.get('feedback') or "No marks awarded."
+                        zero_reasons.append(f"Q{idx}: {reason}")
             student_email = student.get('email')
             if student_email and is_valid_email(student_email):
-                send_result_email(student, exam, total_score, percentage, pdf_bytes)
+                send_result_email(student, exam, total_score, percentage, pdf_bytes, zero_reasons=zero_reasons)
         except Exception as e:
             print(f"[BG Eval] ERROR: {e}")
             import traceback; traceback.print_exc()
@@ -432,7 +454,7 @@ def run_background_evaluation(student_id, exam_id, app_context):
 # ================================================================
 # EMAIL FUNCTIONS
 # ================================================================
-def send_result_email(student, exam, total_score, percentage, pdf_bytes):
+def send_result_email(student, exam, total_score, percentage, pdf_bytes, zero_reasons=None):
     from email.mime.base import MIMEBase
     from email import encoders
     try:
@@ -442,11 +464,24 @@ def send_result_email(student, exam, total_score, percentage, pdf_bytes):
         pct          = round(percentage, 1)
         result_word  = "PASS" if pct >= 35 else "FAIL"
         result_color = "#2e7d32" if pct >= 35 else "#c62828"
+        zero_reasons = zero_reasons or []
+        zero_reason_html = ""
+        if total_score <= 0:
+            reason_items = "".join(
+                f"<li style=\"margin-bottom:6px;\">{escape(str(reason))}</li>"
+                for reason in zero_reasons[:8]
+            ) or "<li>No marks were awarded based on the submitted answers.</li>"
+            zero_reason_html = f"""
+      <div style="background:#fff1f2;border:1px solid #fecdd3;border-radius:6px;padding:14px 16px;margin:0 0 18px;">
+        <p style="margin:0 0 8px;color:#991b1b;font-size:14px;font-weight:700;">Why your score is 0.00</p>
+        <ul style="margin:0;padding-left:18px;color:#7f1d1d;font-size:13px;line-height:1.5;">{reason_items}</ul>
+      </div>
+            """
         ref_id = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = MIMEMultipart('mixed')
         msg['From']    = formataddr(('OEMS Examination Team', EMAIL_CONFIG['SENDER_EMAIL']))
         msg['To']      = student_email
-        msg['Subject'] = f"Exam Result: {exam_title}"
+        msg['Subject'] = f"Exam Result: {exam_title}" if total_score > 0 else f"Exam Result: {exam_title} - Score 0.00"
         html = f"""
 <html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;margin:0;">
 <table align="center" width="100%" style="max-width:500px;background:#fff;border-radius:8px;border:1px solid #e0e0e0;margin:0 auto;border-collapse:collapse;">
@@ -456,16 +491,17 @@ def send_result_email(student, exam, total_score, percentage, pdf_bytes):
   </td></tr>
   <tr><td style="padding:28px 24px;">
     <p style="margin:0 0 16px;color:#333;font-size:15px;">Hi <strong>{first_name}</strong>,</p>
-    <p style="margin:0 0 16px;color:#555;font-size:14px;line-height:1.6;">Your result for <strong>{exam_title}</strong> has been evaluated.</p>
-    <table width="100%" style="background:#f8fafc;border-radius:6px;border:1px solid #e0e0e0;margin-bottom:20px;border-collapse:collapse;">
+      <p style="margin:0 0 16px;color:#555;font-size:14px;line-height:1.6;">Your result for <strong>{exam_title}</strong> has been evaluated.</p>
+      <table width="100%" style="background:#f8fafc;border-radius:6px;border:1px solid #e0e0e0;margin-bottom:20px;border-collapse:collapse;">
       <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;width:50%;">Total Score</td>
           <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;text-align:right;"><strong>{total_score}</strong></td></tr>
       <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;border-bottom:1px solid #eee;">Percentage</td>
           <td style="padding:10px 14px;color:#555;font-size:14px;border-bottom:1px solid #eee;text-align:right;"><strong>{pct}%</strong></td></tr>
       <tr><td style="padding:10px 14px;color:#333;font-size:14px;font-weight:600;">Result</td>
-          <td style="padding:10px 14px;font-size:14px;text-align:right;"><strong style="color:{result_color};">{result_word}</strong></td></tr>
-    </table>
-    <p style="margin:0 0 20px;font-size:13px;color:#888;line-height:1.5;">Detailed question-wise analysis is attached as a PDF report.</p>
+            <td style="padding:10px 14px;font-size:14px;text-align:right;"><strong style="color:{result_color};">{result_word}</strong></td></tr>
+      </table>
+      {zero_reason_html}
+      <p style="margin:0 0 20px;font-size:13px;color:#888;line-height:1.5;">Detailed question-wise analysis is attached as a PDF report.</p>
     <p style="margin:0 0 4px;color:#333;font-size:14px;"><strong>Regards,</strong></p>
     <p style="margin:0;color:#555;font-size:14px;">OEMS Examination Team</p>
   </td></tr>
@@ -487,6 +523,58 @@ def send_result_email(student, exam, total_score, percentage, pdf_bytes):
         print(f"[Email] Result sent to {student_email}")
     except Exception as e:
         print(f"[Email] Failed: {e}")
+
+
+def send_hold_email(student, exam, hold_reasons):
+    try:
+        student_email = student.get('email')
+        if not student_email or not is_valid_email(student_email):
+            return
+
+        first_name = get_first_name(student.get('name', 'Student'))
+        exam_title = exam.get('title', 'Exam') if exam else 'Exam'
+        reason_items = "".join(
+            f"<li style=\"margin-bottom:6px;\">{escape(str(reason))}</li>"
+            for reason in hold_reasons[:8]
+        ) or f"<li>Similarity was equal to or above the plagiarism threshold of {PLAGIARISM_THRESHOLD}%.</li>"
+        ref_id = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        msg = MIMEMultipart('alternative')
+        msg['From']    = formataddr(('OEMS Examination Team', EMAIL_CONFIG['SENDER_EMAIL']))
+        msg['To']      = student_email
+        msg['Subject'] = f"Result On Hold: {exam_title}"
+
+        html = f"""
+<html><body style="font-family:Arial,sans-serif;background:#f4f5f7;padding:20px;margin:0;">
+<table align="center" width="100%" style="max-width:520px;background:#fff;border-radius:8px;border:1px solid #e0e0e0;margin:0 auto;border-collapse:collapse;">
+  <tr><td style="background:#fff8e1;padding:16px 20px;text-align:center;border-radius:8px 8px 0 0;border-bottom:1px solid #fde68a;">
+    <p style="margin:0;font-size:12px;color:#92400e;text-transform:uppercase;letter-spacing:1px;">OEMS Examination Team</p>
+    <h2 style="margin:4px 0 0;color:#78350f;font-size:20px;font-weight:700;">Result Placed On Hold</h2>
+  </td></tr>
+  <tr><td style="padding:28px 24px;">
+    <p style="margin:0 0 16px;color:#333;font-size:15px;">Hi <strong>{escape(first_name)}</strong>,</p>
+    <p style="margin:0 0 16px;color:#555;font-size:14px;line-height:1.6;">Your result for <strong>{escape(str(exam_title))}</strong> is currently on hold for review.</p>
+    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:14px 16px;margin:0 0 18px;">
+      <p style="margin:0 0 8px;color:#92400e;font-size:14px;font-weight:700;">Reason</p>
+      <ul style="margin:0;padding-left:18px;color:#78350f;font-size:13px;line-height:1.5;">{reason_items}</ul>
+    </div>
+    <p style="margin:0 0 20px;font-size:13px;color:#666;line-height:1.5;">An administrator will review the submission. If it is released, your answers will be evaluated again and the final result will be emailed to you.</p>
+    <p style="margin:0 0 4px;color:#333;font-size:14px;"><strong>Regards,</strong></p>
+    <p style="margin:0;color:#555;font-size:14px;">OEMS Examination Team</p>
+  </td></tr>
+  <tr><td style="padding:12px 24px;border-top:1px solid #f0f0f0;text-align:center;">
+    <p style="margin:0;font-size:11px;color:#aaa;">Ref ID: {ref_id}</p>
+  </td></tr>
+</table></body></html>"""
+
+        msg.attach(MIMEText(html, 'html'))
+        with smtplib.SMTP(EMAIL_CONFIG['SMTP_SERVER'], EMAIL_CONFIG['SMTP_PORT']) as server:
+            server.starttls()
+            server.login(EMAIL_CONFIG['SENDER_EMAIL'], EMAIL_CONFIG['APP_PASSWORD'])
+            server.sendmail(EMAIL_CONFIG['SENDER_EMAIL'], student_email, msg.as_string())
+        print(f"[Email] Hold notice sent to {student_email}")
+    except Exception as e:
+        print(f"[Email] Hold notice failed: {e}")
 
 
 # ================================================================
@@ -958,8 +1046,6 @@ def result_details(student_id, exam_id):
         return "Access Denied 🚫", 403
     cursor.execute("SELECT answers.id, questions.question_text, questions.marks, answers.answer AS student_answer, answers.score, answers.feedback FROM answers JOIN questions ON answers.question_id=questions.id WHERE answers.student_id=%s AND answers.exam_id=%s", (student_id, exam_id))
     answers = cursor.fetchall()
-    for a in answers:
-        if a['score'] is None: a['score'] = 0
     cursor.close(); conn.close()
     return render_template("result_details.html", answers=answers)
 
@@ -1129,14 +1215,27 @@ def run_ai_check():
                       FROM answers JOIN questions ON answers.question_id=questions.id
                       WHERE answers.score IS NULL AND questions.question_type='theory'""")
     records = cursor.fetchall()
+    evaluated_answers = 0
+    failed_results = set()
     for r in records:
         student_answer = (r["answer"] or "").strip()
         model_answer   = (r["model_answer"] or "").strip()
         if not student_answer or len(student_answer) < 10:
             cursor.execute("UPDATE answers SET score=%s, feedback=%s WHERE id=%s", (0, "No answer submitted.", r["id"]))
+            evaluated_answers += 1
             continue
-        score, feedback = evaluate_answer(r["question_text"], student_answer, r["marks"], model_answer)
+        try:
+            score, feedback = evaluate_answer(r["question_text"], student_answer, r["marks"], model_answer)
+        except EvaluationUnavailable as e:
+            failed_results.add((r["student_id"], r["exam_id"]))
+            print(f"[AI Eval] Student {r['student_id']}, exam {r['exam_id']}: {e}")
+            cursor.execute(
+                "UPDATE answers SET feedback=%s WHERE id=%s AND score IS NULL",
+                ("Evaluation pending. Please retry after evaluator is available.", r["id"])
+            )
+            continue
         cursor.execute("UPDATE answers SET score=%s, feedback=%s WHERE id=%s", (round(score, 1), feedback, r["id"]))
+        evaluated_answers += 1
     conn.commit()
     cursor.execute("SELECT DISTINCT answers.student_id, answers.exam_id FROM answers JOIN questions ON answers.question_id=questions.id WHERE questions.question_type='theory'")
     for se in cursor.fetchall():
@@ -1152,7 +1251,7 @@ def run_ai_check():
               AND submission_status NOT IN ('Hold','Disqualified')
         """, (round(total,2), new_status, sid, eid))
     conn.commit(); cursor.close(); conn.close()
-    return f"AI Evaluation Complete — {len(records)} answers evaluated."
+    return f"AI Evaluation Complete — {evaluated_answers} answers evaluated. {len(failed_results)} result(s) left pending."
 
 # ── RESET AI EVALUATION
 @app.route("/reset_ai_evaluation")
@@ -1268,9 +1367,9 @@ def _run_plagiarism_and_evaluate(exam_id, app_ctx):
     """
     Post-exam processor — STRICT flow:
 
-    1. Collect all students with status='AwaitingExamEnd'
+    1. Collect all students queued for evaluation
     2. Theory exam → TF-IDF plagiarism check
-       - similarity >= PLAGIARISM_THRESHOLD → status='Hold' (NO eval, NO email)
+       - similarity >= PLAGIARISM_THRESHOLD → status='Hold' (NO eval, hold email)
        - similarity <  PLAGIARISM_THRESHOLD → evaluate + email PDF
     3. MCQ-only students → directly evaluate + email (no plagiarism check needed)
 
@@ -1292,21 +1391,22 @@ def _run_plagiarism_and_evaluate(exam_id, app_ctx):
             """, (exam_id,))
             has_theory_questions = cursor.fetchone()['theory_count'] > 0
 
-            # ── Step 1: All students awaiting processing ──
+            # ── Step 1: All students queued for processing ──
             cursor.execute("""
                 SELECT r.student_id, r.submission_status
                 FROM results r
-                WHERE r.exam_id=%s AND r.submission_status='AwaitingExamEnd'
+                WHERE r.exam_id=%s AND r.submission_status IN ('AwaitingExamEnd','Pending')
             """, (exam_id,))
             pending_students = cursor.fetchall()
             print(f"[ExamEnd] {len(pending_students)} students to process")
 
             if not pending_students:
                 cursor.close(); conn.close()
-                print(f"[ExamEnd] No students with AwaitingExamEnd status — skipping")
+                print(f"[ExamEnd] No queued students — skipping")
                 return
 
             cheater_ids = set()
+            hold_reasons = {}
 
             # ── Step 2: Plagiarism check (only if theory questions exist) ──
             if has_theory_questions:
@@ -1324,7 +1424,7 @@ def _run_plagiarism_and_evaluate(exam_id, app_ctx):
                       AND a.answer != ''
                       AND s.id IN (
                           SELECT student_id FROM results
-                          WHERE exam_id=%s AND submission_status='AwaitingExamEnd'
+                          WHERE exam_id=%s AND submission_status IN ('AwaitingExamEnd','Pending')
                       )
                 """, (exam_id, exam_id))
                 rows = cursor.fetchall()
@@ -1350,31 +1450,56 @@ def _run_plagiarism_and_evaluate(exam_id, app_ctx):
                                 print(f"[Plagiarism] {student_info.get(sids[i],{}).get('name','?')} "
                                       f"↔ {student_info.get(sids[j],{}).get('name','?')}: {sim}%")
                                 if sim >= PLAGIARISM_THRESHOLD:
-                                    cheater_ids.add(sids[i])
-                                    cheater_ids.add(sids[j])
+                                    sid_a, sid_b = sids[i], sids[j]
+                                    name_a = student_info.get(sid_a, {}).get('name', f"Student {sid_a}")
+                                    name_b = student_info.get(sid_b, {}).get('name', f"Student {sid_b}")
+                                    cheater_ids.add(sid_a)
+                                    cheater_ids.add(sid_b)
+                                    hold_reasons.setdefault(sid_a, []).append(
+                                        f"Similarity {sim}% with {name_b}; threshold is {PLAGIARISM_THRESHOLD}%."
+                                    )
+                                    hold_reasons.setdefault(sid_b, []).append(
+                                        f"Similarity {sim}% with {name_a}; threshold is {PLAGIARISM_THRESHOLD}%."
+                                    )
                     except Exception as pe:
                         print(f"[Plagiarism] TF-IDF error: {pe}")
 
-                # Mark plagiarists as Hold — NO evaluation, NO email
+                cursor.execute("SELECT * FROM exams WHERE id=%s", (exam_id,))
+                hold_exam = cursor.fetchone() or {'title': f'Exam #{exam_id}'}
+                held_ids = []
+
+                # Mark plagiarists as Hold — NO evaluation, but notify by email
                 for sid in cheater_ids:
                     cursor.execute(
                         "UPDATE results SET submission_status='Hold' WHERE student_id=%s AND exam_id=%s",
                         (sid, exam_id)
                     )
+                    if cursor.rowcount > 0:
+                        held_ids.append(sid)
                     name = student_info.get(sid, {}).get('name', str(sid))
                     print(f"[ExamEnd] {name} → Hold (similarity >= {PLAGIARISM_THRESHOLD}%)")
 
                 conn.commit()
+                for sid in held_ids:
+                    send_hold_email(
+                        {
+                            'id': sid,
+                            'name': student_info.get(sid, {}).get('name', f"Student {sid}"),
+                            'email': student_info.get(sid, {}).get('email')
+                        },
+                        hold_exam,
+                        hold_reasons.get(sid, [f"Similarity >= {PLAGIARISM_THRESHOLD}%"])
+                    )
                 print(f"[ExamEnd] {len(cheater_ids)} student(s) flagged as Hold")
             else:
                 print(f"[ExamEnd] MCQ-only exam — skipping plagiarism check")
 
             # ── Step 3: Evaluate clean students ──
-            # Only students still on AwaitingExamEnd (not Hold) get evaluated
+            # Only students still queued (not Hold) get evaluated
             cursor.execute("""
                 SELECT r.student_id
                 FROM results r
-                WHERE r.exam_id=%s AND r.submission_status='AwaitingExamEnd'
+                WHERE r.exam_id=%s AND r.submission_status IN ('AwaitingExamEnd','Pending')
             """, (exam_id,))
             clean_students = [r['student_id'] for r in cursor.fetchall()]
             cursor.close(); conn.close()
@@ -1450,9 +1575,9 @@ def trigger_exam_evaluation(exam_id):
     Admin manually triggers post-exam processing.
     Use when:
     - Exam time was changed in DB
-    - Students are stuck on AwaitingExamEnd
+    - Students are stuck on AwaitingExamEnd/Pending
     - Need to re-run plagiarism + evaluation
-    Resets AwaitingExamEnd students (not Hold/Disqualified/Evaluated).
+    Queues AwaitingExamEnd/Pending students (not Hold/Disqualified/Evaluated).
     """
     conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -1462,11 +1587,10 @@ def trigger_exam_evaluation(exam_id):
         cursor.close(); conn.close()
         return jsonify({"success": False, "message": "Exam not found"}), 404
 
-    # Reset any already-evaluated results if admin wants full re-evaluation
-    # Only reset AwaitingExamEnd — don't touch Hold/Disqualified/Evaluated
+    # Only count queued students — don't touch Hold/Disqualified/Evaluated
     cursor.execute("""
         SELECT COUNT(*) AS cnt FROM results
-        WHERE exam_id=%s AND submission_status='AwaitingExamEnd'
+        WHERE exam_id=%s AND submission_status IN ('AwaitingExamEnd','Pending')
     """, (exam_id,))
     awaiting_count = cursor.fetchone()['cnt']
     cursor.close(); conn.close()
@@ -1486,22 +1610,95 @@ def trigger_exam_evaluation(exam_id):
 @app.route("/release_result/<int:student_id>/<int:exam_id>", methods=["POST"])
 @login_required("admin")
 def release_result(student_id, exam_id):
-    """Admin manually releases a held result → triggers evaluation + email"""
+    """Admin manually releases a held result → resets scores, re-evaluates, then emails result"""
     conn   = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    # Release from Hold → directly evaluate (admin manually cleared)
-    # No need to re-run plagiarism — admin has already reviewed
-    cursor.execute(
-        "UPDATE results SET submission_status='AwaitingExamEnd' WHERE student_id=%s AND exam_id=%s",
-        (student_id, exam_id)
-    )
+    cursor.execute("""
+        SELECT submission_status
+        FROM results
+        WHERE student_id=%s AND exam_id=%s
+    """, (student_id, exam_id))
+    result = cursor.fetchone()
+    if not result:
+        cursor.close(); conn.close()
+        return jsonify({"success": False, "message": "Result not found"}), 404
+
+    if result["submission_status"] != "Hold":
+        cursor.close(); conn.close()
+        return jsonify({"success": False, "message": "Only held results can be released"}), 400
+
+    cursor.execute("""
+        UPDATE answers a
+        JOIN questions q ON a.question_id=q.id
+        SET a.score=NULL, a.feedback='Pending AI evaluation'
+        WHERE a.student_id=%s AND a.exam_id=%s
+          AND q.question_type='theory'
+    """, (student_id, exam_id))
+    reset_count = cursor.rowcount
+
+    cursor.execute("""
+        UPDATE results
+        SET total_score=0, submission_status='Pending'
+        WHERE student_id=%s AND exam_id=%s
+          AND submission_status='Hold'
+    """, (student_id, exam_id))
     conn.commit()
     cursor.close(); conn.close()
 
-    # Trigger evaluation + email in background
+    # Trigger fresh evaluation + final result email in background
     ctx = app.app_context()
     threading.Thread(target=run_background_evaluation, args=(student_id, exam_id, ctx), daemon=True).start()
-    return jsonify({"success": True, "message": "Result released — evaluation started"})
+    return jsonify({"success": True, "message": f"Result released — re-evaluation started for {reset_count} theory answer(s)"})
+
+
+# ── Admin: Re-evaluate a clean result manually ──
+@app.route("/reevaluate_result/<int:student_id>/<int:exam_id>", methods=["POST"])
+@login_required("admin")
+def reevaluate_result(student_id, exam_id):
+    """
+    Reset one non-held student's theory scores and run SBERT evaluation again.
+    Use this for old false-zero results created before the evaluator fix.
+    """
+    conn   = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT submission_status
+        FROM results
+        WHERE student_id=%s AND exam_id=%s
+    """, (student_id, exam_id))
+    result = cursor.fetchone()
+    if not result:
+        cursor.close(); conn.close()
+        return jsonify({"success": False, "message": "Result not found"}), 404
+
+    if result["submission_status"] in ("Hold", "Disqualified"):
+        cursor.close(); conn.close()
+        return jsonify({"success": False, "message": "Held or disqualified results cannot be re-evaluated here"}), 400
+
+    cursor.execute("""
+        UPDATE answers a
+        JOIN questions q ON a.question_id=q.id
+        SET a.score=NULL, a.feedback='Pending AI evaluation'
+        WHERE a.student_id=%s AND a.exam_id=%s
+          AND q.question_type='theory'
+    """, (student_id, exam_id))
+    reset_count = cursor.rowcount
+    if reset_count == 0:
+        cursor.close(); conn.close()
+        return jsonify({"success": False, "message": "No theory answers found to re-evaluate"}), 400
+
+    cursor.execute("""
+        UPDATE results
+        SET total_score=0, submission_status='Pending'
+        WHERE student_id=%s AND exam_id=%s
+          AND submission_status NOT IN ('Hold','Disqualified')
+    """, (student_id, exam_id))
+    conn.commit()
+    cursor.close(); conn.close()
+
+    ctx = app.app_context()
+    threading.Thread(target=run_background_evaluation, args=(student_id, exam_id, ctx), daemon=True).start()
+    return jsonify({"success": True, "message": f"Re-evaluation started for {reset_count} theory answer(s)"})
 
 
 # ── Admin: Disqualify held result ──

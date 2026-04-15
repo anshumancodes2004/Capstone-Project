@@ -164,6 +164,7 @@
         .score-high { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
         .score-medium { background: #fff3e0; color: #e65100; border: 1px solid #ffe0b2; }
         .score-low { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+        .score-pending { background: #f3e8ff; color: #6d28d9; border: 1px solid #ddd6fe; }
 
         /* Animations */
         @keyframes fadeIn {
@@ -230,10 +231,14 @@
                                 <div class="content-box">{{ a.student_answer or 'No answer provided' }}</div>
                             </td>
                             <td>
-                                {% set score = a.score|float %}
-                                <div class="score-badge {% if score >= (a.marks|float * 0.8) %}score-high{% elif score >= (a.marks|float * 0.5) %}score-medium{% else %}score-low{% endif %}">
-                                    {{ "%.1f"|format(score) }} / {{ a.marks }}
-                                </div>
+                                {% if a.score is none %}
+                                    <div class="score-badge score-pending">Pending</div>
+                                {% else %}
+                                    {% set score = a.score|float %}
+                                    <div class="score-badge {% if score >= (a.marks|float * 0.8) %}score-high{% elif score >= (a.marks|float * 0.5) %}score-medium{% else %}score-low{% endif %}">
+                                        {{ "%.1f"|format(score) }} / {{ a.marks }}
+                                    </div>
+                                {% endif %}
                             </td>
                             <td>
                                 <div class="content-box">{{ a.feedback or 'Pending evaluation' }}</div>

@@ -44,9 +44,11 @@
         .score-circle { width:130px; height:130px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; flex-shrink:0; border:6px solid #e9ecef; background: rgba(255,255,255,0.9); box-shadow: inset 0 4px 10px rgba(0,0,0,0.05); }
         .score-circle.pass { border-color:#22c55e; }
         .score-circle.fail { border-color:#ef4444; }
+        .score-circle.pending { border-color:#f59e0b; }
         .score-big { font-size:2rem; font-weight:700; line-height:1; }
         .score-big.pass { color:#16a34a; }
         .score-big.fail { color:#dc2626; }
+        .score-big.pending { color:#b45309; font-size:1.1rem; }
         .score-sub { font-size:0.8rem; color:#6c757d; margin-top:4px; font-weight: 500; }
         
         .score-details h2 { font-size:1.6rem; font-weight:600; color:#2c3e50; margin-bottom:8px; }
@@ -56,6 +58,7 @@
         .result-pill { display:inline-block; padding:5px 18px; border-radius:20px; font-size:0.85rem; font-weight:600; margin-top:8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
         .result-pill.pass { background:#e8f5e9; color:#2e7d32; border:1px solid #c8e6c9; }
         .result-pill.fail { background:#ffebee; color:#c62828; border:1px solid #ffcdd2; }
+        .result-pill.pending { background:#fff8e1; color:#92400e; border:1px solid #fde68a; }
 
         /* ── Pending Banner Glass ── */
         .pending-banner { 
@@ -153,25 +156,26 @@
         <div class="split-line"></div>
     </div>
 
+    {% set is_pending_result = submission_status in ['Pending', 'AwaitingExamEnd'] %}
     <div class="score-hero">
-        <div class="score-circle {{ 'pass' if percentage >= 35 else 'fail' }}">
-            <span class="score-big {{ 'pass' if percentage >= 35 else 'fail' }}">
-                {{ percentage|round(1) }}%
+        <div class="score-circle {% if is_pending_result %}pending{% else %}{{ 'pass' if percentage >= 35 else 'fail' }}{% endif %}">
+            <span class="score-big {% if is_pending_result %}pending{% else %}{{ 'pass' if percentage >= 35 else 'fail' }}{% endif %}">
+                {% if is_pending_result %}Pending{% else %}{{ percentage|round(1) }}%{% endif %}
             </span>
-            <span class="score-sub">{{ grade }}</span>
+            <span class="score-sub">{% if is_pending_result %}AI Check{% else %}{{ grade }}{% endif %}</span>
         </div>
         <div class="score-details">
             <h2>{{ exam.title }}</h2>
             <p>📅 {{ exam.start_time.strftime('%d %b %Y, %I:%M %p') if exam.start_time else '—' }}</p>
             <p>🎓 {{ student.name }} &nbsp;•&nbsp; <span style="background:#e9ecef; padding:2px 8px; border-radius:6px; font-size:0.85rem;">{{ student.admission_no }}</span></p>
-            <p style="margin-top: 10px;">Total Score: <strong style="font-size: 1.1rem;">{{ total_score }} / {{ max_marks }}</strong></p>
-            <span class="result-pill {{ 'pass' if percentage >= 35 else 'fail' }}">
-                {{ 'PASS' if percentage >= 35 else 'FAIL' }}
+            <p style="margin-top: 10px;">Total Score: <strong style="font-size: 1.1rem;">{% if is_pending_result %}Pending{% else %}{{ total_score }} / {{ max_marks }}{% endif %}</strong></p>
+            <span class="result-pill {% if is_pending_result %}pending{% else %}{{ 'pass' if percentage >= 35 else 'fail' }}{% endif %}">
+                {% if is_pending_result %}EVALUATION PENDING{% else %}{{ 'PASS' if percentage >= 35 else 'FAIL' }}{% endif %}
             </span>
         </div>
     </div>
 
-    {% if submission_status == 'Pending' %}
+    {% if is_pending_result %}
     <div class="pending-banner">
         <span style="font-size:1.8rem;">⏳</span>
         <div class="pending-banner-text">
@@ -195,7 +199,7 @@
             <div class="stat-lbl">Not Attempted</div>
         </div>
         <div class="stat-pill">
-            <div class="stat-val" style="color:#16a34a;">{{ total_score }}</div>
+            <div class="stat-val" style="color:#16a34a;">{% if is_pending_result %}Pending{% else %}{{ total_score }}{% endif %}</div>
             <div class="stat-lbl">Score Obtained</div>
         </div>
     </div>
